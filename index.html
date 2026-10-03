@@ -15,11 +15,23 @@ body{height:100vh;height:100dvh}
 .pill{pointer-events:auto;min-height:44px;min-width:44px;padding:0 16px;border-radius:999px;border:2.5px solid var(--gold);background:var(--cream);color:var(--ink);font:700 15px/1 ui-rounded,"Nunito","Trebuchet MS",system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 3px 0 rgba(200,150,50,.35),0 6px 14px rgba(120,90,40,.18);cursor:pointer;touch-action:manipulation;white-space:nowrap;-webkit-appearance:none;appearance:none}
 .pill:active{transform:translateY(2px)}
 .pill.on{background:#ffe9a8}
-.round{padding:0;width:46px;font-size:20px}
+.round{padding:0;width:48px}
+.ic{display:inline-block;width:28px;height:28px;margin-right:7px;flex:none;line-height:0}
+.ic svg{width:100%;height:100%;display:block;overflow:visible}
+.round .ic{margin:0;width:32px;height:32px}
+.pill:empty{display:none}
+.t-pink{background:#ffd3de}.t-sky{background:#cfe8fb}.t-lav{background:#e4d9fb}.t-mint{background:#c9f0d9}.t-butter{background:#fff0b0}.t-peach{background:#ffdcbc}
+.pill.on{box-shadow:0 0 0 3px #ff9a4a,0 6px 14px rgba(120,90,40,.22)}
+.shutter .ic{width:46px;height:46px;margin:0}
+#hint .f{width:64px;height:64px;margin:0 auto 4px}
+#hint .f .ic{width:64px;height:64px;margin:0}
+.sheet h3 .ic{vertical-align:middle;margin-right:6px}
 #top{position:absolute;left:calc(12px + var(--sl));right:calc(12px + var(--sr));top:calc(10px + var(--st));display:flex;align-items:flex-start;justify-content:space-between}
 #top .r{display:flex;gap:8px}
-#townName{margin-right:8px;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
-#count{font-weight:600;opacity:.75;font-size:13px}
+#btnTown{padding:0 12px;min-height:50px;max-width:56vw}
+.tn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;line-height:1.1}
+#townName{overflow:hidden;text-overflow:ellipsis;max-width:100%;white-space:nowrap}
+#count{font-weight:700;opacity:.8;font-size:13px}
 #bottom{position:absolute;left:calc(12px + var(--sl));right:calc(12px + var(--sr));bottom:calc(14px + var(--sb));display:flex;justify-content:center;gap:10px}
 #hint{position:absolute;left:0;right:0;bottom:calc(26% + var(--sb));text-align:center;font-weight:800;font-size:18px;text-shadow:0 2px 0 #fff8;display:none}
 #hint .f{font-size:46px;display:block;animation:pulse 1.4s ease-in-out infinite}
@@ -31,9 +43,9 @@ body.photo #photobar{display:flex}
 body.photo #label{display:none!important}
 .shutter{width:68px;height:68px;border-radius:50%;font-size:28px;padding:0}
 #flash{position:fixed;left:0;top:0;right:0;bottom:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .45s ease-out;z-index:20}
-#modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(90,70,40,.38);display:none;align-items:center;justify-content:center;z-index:30;padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));box-sizing:border-box}
+#modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(90,70,40,.38);display:none;align-items:flex-start;justify-content:center;z-index:30;padding:calc(8vh + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));box-sizing:border-box}
 #modal.open{display:flex}
-.sheet{background:var(--cream);border:3px solid var(--gold);border-radius:24px;padding:16px;max-width:420px;width:100%;max-height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(80,60,20,.35)}
+.sheet{background:var(--cream);border:3px solid var(--gold);border-radius:24px;padding:16px;max-width:420px;width:100%;max-height:84vh;margin:0 auto;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(80,60,20,.35)}
 .sheet h3{margin:0;font-size:19px}
 .sheet h4{margin:6px 0 0;font-size:13px;opacity:.7;text-transform:uppercase;letter-spacing:.06em}
 .sheet .row{display:flex;gap:8px;flex-wrap:wrap}
@@ -51,26 +63,26 @@ input[type=text]{font:700 18px ui-rounded,system-ui,sans-serif;padding:10px 14px
 <canvas id="c"></canvas>
 <div id="ui">
   <div id="top">
-    <button class="pill" id="btnTown" aria-label="Rename town"><b id="townName"></b><span id="count"></span></button>
-    <div class="r"><button class="pill round" id="btnExplore" aria-label="Explore town">🧭</button><button class="pill round" id="btnSound" aria-label="Sound">🔊</button><button class="pill round" id="btnPause" aria-label="Pause">⏸</button></div>
+    <button class="pill t-butter" id="btnTown" aria-label="Rename town"><span class="tn"><b id="townName"></b><span id="count"></span></span><i class="ic" data-i="pencil" style="margin:0 0 0 8px;width:20px;height:20px"></i></button>
+    <div class="r"><button class="pill round t-mint" id="btnExplore" aria-label="Explore town"><i class="ic" data-i="compass"></i></button><button class="pill round t-butter" id="btnSound" aria-label="Sound"><i class="ic" data-i="soundOn"></i></button><button class="pill round t-sky" id="btnPause" aria-label="Pause"><i class="ic" data-i="pause"></i></button></div>
   </div>
-  <div id="hint"><span class="f">👆</span>Press and hold anywhere</div>
+  <div id="hint"><span class="f"><i class="ic" data-i="finger"></i></span>Press and hold anywhere</div>
   <div id="bottom">
-    <button class="pill" id="btnPhoto">📷 Photo</button>
-    <button class="pill" id="btnList">🏘 Town List</button>
-    <button class="pill" id="btnMenu">☰ Menu</button>
+    <button class="pill t-pink" id="btnPhoto"><i class="ic" data-i="camera"></i>Photo</button>
+    <button class="pill t-sky" id="btnList"><i class="ic" data-i="town"></i>Town</button>
+    <button class="pill t-lav" id="btnMenu"><i class="ic" data-i="menu"></i>Menu</button>
   </div>
 </div>
 <button class="pill" id="label"></button>
 <div id="photobar">
-  <button class="pill" id="pbMode">🏠 Building</button>
-  <button class="pill shutter" id="pbShutter" aria-label="Shutter">📸</button>
-  <button class="pill" id="pbCap">Caption: on</button>
-  <button class="pill" id="pbExit">✕ Exit</button>
+  <button class="pill t-sky" id="pbMode"></button>
+  <button class="pill shutter t-pink" id="pbShutter" aria-label="Shutter"><i class="ic" data-i="shutter"></i></button>
+  <button class="pill t-butter" id="pbCap"></button>
+  <button class="pill t-peach" id="pbExit"><i class="ic" data-i="exit"></i>Exit</button>
 </div>
 <div id="flash"></div>
 <div id="modal"></div>
-<div id="paused"><div>Paused</div><button class="pill" id="btnResume">▶ Resume</button></div>
+<div id="paused"><div>Paused</div><button class="pill t-mint" id="btnResume"><i class="ic" data-i="play"></i>Resume</button></div>
 <div id="msg"></div>
 <script>
 // Classic script: friendly fallback if the module (three.js CDN) never boots.
@@ -1516,7 +1528,7 @@ function enterPhoto() {
   if (S.mode === 'photo') return; closeModal();
   S.mode = 'photo'; hold.active = false; document.body.classList.add('photo'); photoSaved = { zoom: cam.zoomT };
   cam.zMin = 0.4; cam.zMax = 2.2; S.photoSub = S.buildings.length ? 'building' : 'town';
-  $('pbMode').textContent = S.photoSub === 'building' ? '🏠 Building' : '🏘 Town'; $('pbCap').textContent = 'Caption: ' + (S.settings.caption ? 'on' : 'off');
+  setPbMode(); setPbCap();
   photoFocus();
 }
 function exitPhoto() {
@@ -1565,11 +1577,40 @@ async function finishShot(blob, bld) {
 function downloadBlob(blob, name) { const a = document.createElement('a'), u = URL.createObjectURL(blob); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(u); }, 4000); }
 function showShotSheet(blob, name, file) {
   const url = URL.createObjectURL(blob);
-  openModal('<h3>📸 Photo ready</h3><img src="' + url + '" alt="photo"><div class="row"><button class="pill" id="shShare">Share / Save</button><button class="pill" id="shDl">Download</button><button class="pill" data-close="1">Close</button></div><small>On iPhone/iPad you can also long-press the picture and choose “Save to Photos”.</small>', el => {
+  openModal('<h3>' + ic('camera') + 'Photo ready</h3><img src="' + url + '" alt="photo"><div class="row"><button class="pill" id="shShare">Share / Save</button><button class="pill" id="shDl">Download</button><button class="pill" data-close="1">Close</button></div><small>On iPhone/iPad you can also long-press the picture and choose “Save to Photos”.</small>', el => {
     el.querySelector('#shShare').onclick = () => navigator.share({ files: [file], title: S.townName }).catch(() => {});
     el.querySelector('#shDl').onclick = () => downloadBlob(blob, name);
   });
 }
+
+
+/* ============================================================
+   ICONS — hand-drawn inline SVG set (chunky outlines, candy fills)
+   ============================================================ */
+const svgI = b => '<svg viewBox="0 0 32 32" fill="none" stroke="#6a4d2a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">' + b + '</svg>';
+const ICONS = {
+  camera: svgI('<path d="M10 9l2-3.2h8L22 9" fill="#ff9a4a"/><rect x="3.5" y="9" width="25" height="17" rx="5" fill="#ff8fa8"/><circle cx="16" cy="17.5" r="6.2" fill="#fff3dc"/><circle cx="16" cy="17.5" r="3.4" fill="#58b8f0"/><circle cx="14.8" cy="16.3" r="1" fill="#fff" stroke="none"/><circle cx="24.6" cy="13" r="1.4" fill="#ffd36e" stroke="none"/>'),
+  town: svgI('<rect x="3" y="15" width="12" height="12" fill="#fbe59a"/><path d="M1.5 16.5L9 8.5l7.5 8z" fill="#ff8fa8"/><rect x="7" y="21" width="4" height="6" rx="1" fill="#b98655"/><rect x="15" y="12" width="13" height="15" fill="#9fe0bd"/><path d="M13.8 13.2L21.5 5l7.7 8.2z" fill="#a98ae0"/><rect x="19" y="17" width="5" height="5" rx="1" fill="#fff3dc"/>'),
+  menu: svgI('<rect x="4" y="4.5" width="24" height="6.2" rx="3.1" fill="#ff8fa8"/><rect x="4" y="12.9" width="24" height="6.2" rx="3.1" fill="#ffd36e"/><rect x="4" y="21.3" width="24" height="6.2" rx="3.1" fill="#7fd6a4"/>'),
+  soundOn: svgI('<path d="M3.5 12h5.5l7-6v20l-7-6H3.5z" fill="#ffd36e"/><path d="M20.5 11.5c2.2 2.6 2.2 6.4 0 9" stroke="#ff9a4a" stroke-width="2.8"/><path d="M24.5 8c4.2 4.6 4.2 11.4 0 16" stroke="#ff8fa8" stroke-width="2.8"/>'),
+  soundOff: svgI('<path d="M3.5 12h5.5l7-6v20l-7-6H3.5z" fill="#d9cfb8"/><path d="M21 12l7 8M28 12l-7 8" stroke="#ff6f8f" stroke-width="3.2"/>'),
+  pause: svgI('<rect x="5.5" y="5" width="8" height="22" rx="3.2" fill="#58b8f0"/><rect x="18.5" y="5" width="8" height="22" rx="3.2" fill="#b79cf0"/>'),
+  play: svgI('<path d="M9 5.5l17 10.5-17 10.5z" fill="#6fd49c"/>'),
+  compass: svgI('<circle cx="16" cy="16" r="12.5" fill="#6fd49c"/><circle cx="16" cy="16" r="8.6" fill="#fff3dc" stroke-width="1.6"/><path d="M22 10l-3.6 8L10 22l3.6-8z" fill="#ff8fa8"/><circle cx="16" cy="16" r="1.7" fill="#6a4d2a" stroke="none"/><path d="M16 2.6v2.4M16 27v2.4M2.6 16H5M27 16h2.4" stroke-width="1.8"/>'),
+  shutter: svgI('<circle cx="16" cy="16" r="13" fill="#fff3dc"/><circle cx="16" cy="16" r="8.4" fill="#ff9a4a"/><circle cx="13" cy="13" r="2.4" fill="#fff" stroke="none"/>'),
+  exit: svgI('<circle cx="16" cy="16" r="12.5" fill="#ff8fa8"/><path d="M11 11l10 10M21 11L11 21" stroke="#fff3dc" stroke-width="3.2"/>'),
+  home: svgI('<rect x="6" y="15" width="20" height="12" fill="#fbe59a"/><path d="M3.5 16.5L16 5l12.5 11.5z" fill="#ff8fa8"/><rect x="21" y="6" width="3.4" height="6" fill="#cdbdf0"/><rect x="13.2" y="19.5" width="5.6" height="7.5" rx="2.4" fill="#b98655"/>'),
+  shop: svgI('<rect x="5" y="14" width="22" height="13" fill="#fbe59a"/><path d="M2.5 14.5L6 6h20l3.5 8.5z" fill="#ff9a4a"/><path d="M11.3 6l-1.2 8.5M16 6v8.5M20.7 6l1.2 8.5" stroke="#fff3dc" stroke-width="2.4"/><rect x="13" y="19" width="6" height="8" rx="1.5" fill="#b98655"/>'),
+  castle: svgI('<path d="M4 27V10h4.4v3h3V10h1v0h5.2V10h1v3h3v-3H27v17z" fill="#cdbdf0"/><path d="M13.4 27v-5a2.6 2.6 0 015.2 0v5z" fill="#b98655"/><path d="M16 10V4l5 2-5 2" fill="#ff9a4a" stroke-width="1.6"/>'),
+  tag: svgI('<rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="#ffd36e"/><path d="M9 13.5h14M9 18.5h8" stroke-width="2.4"/>'),
+  dice: svgI('<rect x="3.5" y="3.5" width="25" height="25" rx="7.5" fill="#fff3dc"/><circle cx="11" cy="11" r="2.3" fill="#ff8fa8" stroke="none"/><circle cx="21" cy="11" r="2.3" fill="#58b8f0" stroke="none"/><circle cx="16" cy="16" r="2.3" fill="#ffd36e" stroke="none"/><circle cx="11" cy="21" r="2.3" fill="#6fd49c" stroke="none"/><circle cx="21" cy="21" r="2.3" fill="#b79cf0" stroke="none"/>'),
+  pencil: svgI('<path d="M6 26l1.6-6.4L21 6.2l4.8 4.8L12.4 24.4z" fill="#ffd36e"/><path d="M19 8.2l4.8 4.8" stroke-width="1.8"/><path d="M6 26l1.6-6.4 4.8 4.8z" fill="#ff8fa8"/>'),
+  finger: svgI('<circle cx="16" cy="3.6" r="2.4" stroke="#ff9a4a" stroke-width="1.7"/><rect x="12.8" y="5.5" width="6.4" height="17" rx="3.2" fill="#ffd2a8"/><rect x="8" y="16" width="16" height="12.5" rx="5.5" fill="#ffd2a8"/><ellipse cx="7.6" cy="21.5" rx="2.6" ry="3.6" transform="rotate(-18 7.6 21.5)" fill="#ffd2a8"/><path d="M14.2 22.5v3.5M18 22.5v3.5" stroke-width="1.5"/>')
+};
+const ic = (n, st) => '<i class="ic"' + (st ? ' style="' + st + '"' : '') + '>' + ICONS[n] + '</i>';
+document.querySelectorAll('[data-i]').forEach(el => { el.innerHTML = ICONS[el.dataset.i]; });
+function setPbMode() { $('pbMode').innerHTML = ic(S.photoSub === 'building' ? 'home' : 'town') + (S.photoSub === 'building' ? 'Building' : 'Town'); }
+function setPbCap() { $('pbCap').innerHTML = ic('tag') + 'Caption: ' + (S.settings.caption ? 'on' : 'off'); }
 
 /* ============================================================
    UI
@@ -1584,9 +1625,9 @@ modalEl.addEventListener('click', e => { if (e.target === modalEl || (e.target.c
 let menuOpen = false, hintDismissed = false;
 function refreshUI() {
   $('townName').textContent = S.townName; const n = S.buildings.length;
-  $('count').textContent = n + (n === 1 ? ' building' : ' buildings');
+  $('count').innerHTML = ic('home', 'width:16px;height:16px;margin:0 3px 0 0;vertical-align:middle') + n;
   $('hint').style.display = n === 0 && S.mode === 'play' && !hintDismissed ? 'block' : 'none';
-  $('btnSound').textContent = S.settings.sound ? '🔊' : '🔇';
+  $('btnSound').innerHTML = ic(S.settings.sound ? 'soundOn' : 'soundOff', 'width:32px;height:32px;margin:0');
 }
 function updateLabelText() {
   const b = S.buildings.find(o => o.id === S.selected), l = $('label');
@@ -1600,8 +1641,9 @@ function updateLabelPos() {
   l.style.visibility = 'visible'; l.style.transform = 'translate(' + ((_v.x * 0.5 + 0.5) * viewW).toFixed(1) + 'px,' + ((-_v.y * 0.5 + 0.5) * viewH).toFixed(1) + 'px) translate(-50%,-100%)';
 }
 function nameModal(title, value, onSave, onDice) {
-  openModal('<h3>' + esc(title) + '</h3><input type="text" id="nmIn" maxlength="24" autocomplete="off" value="' + esc(value) + '"><div class="row"><button class="pill" id="nmSave">Save</button>' + (onDice ? '<button class="pill" id="nmDice" aria-label="Re-roll">🎲 Re-roll</button>' : '') + '<button class="pill" data-close="1">Cancel</button></div>', el => {
+  openModal('<h3>' + esc(title) + '</h3><input type="text" id="nmIn" maxlength="24" autocomplete="off" value="' + esc(value) + '"><div class="row"><button class="pill" id="nmSave">Save</button>' + (onDice ? '<button class="pill t-butter" id="nmDice" aria-label="Re-roll">' + ic('dice') + 'Re-roll</button>' : '') + '<button class="pill" data-close="1">Cancel</button></div>', el => {
     const inp = el.querySelector('#nmIn'), save = () => { const v = inp.value.trim().slice(0, 24); if (v) { onSave(v); closeModal(); } };
+    try { inp.focus(); inp.select(); } catch (e) {}
     el.querySelector('#nmSave').onclick = save; inp.onkeydown = e => { if (e.key === 'Enter') save(); };
     if (onDice) el.querySelector('#nmDice').onclick = () => { inp.value = onDice(); };
   });
@@ -1620,11 +1662,11 @@ $('btnExplore').onclick = () => setExplore(!S.explore);
 function setPaused(p) { S.paused = p; $('paused').style.display = p ? 'flex' : 'none'; if (p) hold.active = false; }
 $('btnPause').onclick = () => setPaused(true); $('btnResume').onclick = () => setPaused(false);
 $('btnPhoto').onclick = enterPhoto; $('pbExit').onclick = exitPhoto; $('pbShutter').onclick = shutter;
-$('pbMode').onclick = () => { S.photoSub = S.photoSub === 'building' ? 'town' : 'building'; $('pbMode').textContent = S.photoSub === 'building' ? '🏠 Building' : '🏘 Town'; photoFocus(); };
-$('pbCap').onclick = () => { S.settings.caption = !S.settings.caption; $('pbCap').textContent = 'Caption: ' + (S.settings.caption ? 'on' : 'off'); saveSoon(); };
-const ROLE_ICON = { home: '🏠', shop: '🛍️', landmark: '🏰' };
+$('pbMode').onclick = () => { S.photoSub = S.photoSub === 'building' ? 'town' : 'building'; setPbMode(); photoFocus(); };
+$('pbCap').onclick = () => { S.settings.caption = !S.settings.caption; setPbCap(); saveSoon(); };
+const ROLE_ICON = { home: ic('home'), shop: ic('shop'), landmark: ic('castle') };
 $('btnList').onclick = () => {
-  const rows = S.buildings.slice().reverse().map(b => '<button class="pill item" data-id="' + b.id + '">' + ROLE_ICON[CONFIG.buildings[b.type].role] + '&nbsp; <span>' + esc(b.name) + '<small>' + esc(CONFIG.buildings[b.type].label) + '</small></span></button>').join('');
+  const rows = S.buildings.slice().reverse().map(b => '<button class="pill item" data-id="' + b.id + '">' + ROLE_ICON[CONFIG.buildings[b.type].role] + '<span>' + esc(b.name) + '<small>' + esc(CONFIG.buildings[b.type].label) + '</small></span></button>').join('');
   openModal('<h3>Town List</h3><div class="scroll">' + (rows || '<div>No buildings yet — press and hold to build!</div>') + '</div><div class="row"><button class="pill" data-close="1">Close</button></div>', el => {
     el.querySelectorAll('.item').forEach(btn => btn.onclick = () => { const b = S.buildings.find(o => o.id === +btn.dataset.id); closeModal(); if (b) focusBuilding(b); });
   });
@@ -1633,11 +1675,13 @@ function focusBuilding(b) { S.selected = b.id; updateLabelText(); cam.away = tru
 function menuHTML() {
   const th = CONFIG.palettes.map((p, i) => '<button class="pill' + (i === S.themeIdx ? ' on' : '') + '" data-theme="' + i + '"><span class="sw" style="background:' + p.walls[0] + '"></span><span class="sw" style="background:' + p.walls[1] + '"></span>' + esc(p.name) + '</button>').join('');
   const qs = ['auto', 'LOW', 'MEDIUM', 'HIGH'].map(q => '<button class="pill' + (S.settings.quality === q ? ' on' : '') + '" data-q="' + q + '">' + (q === 'auto' ? 'Auto' : CONFIG.quality[q].label) + '</button>').join('');
-  return '<h3>' + esc(GAME_NAME) + '</h3><h4>Palette</h4><div class="row">' + th + '</div><h4>Quality (now: ' + CONFIG.quality[tierName].label + ')</h4><div class="row">' + qs + '</div><h4>Town</h4><div class="row"><button class="pill" data-act="reset">Reset town…</button><button class="pill" data-close="1">Close</button></div>';
+  return '<h3>' + esc(GAME_NAME) + '</h3><h4>Palette</h4><div class="row">' + th + '</div><h4>Quality (now: ' + CONFIG.quality[tierName].label + ')</h4><div class="row">' + qs + '</div><h4>Town</h4><div class="row"><button class="pill t-butter" data-act="rename">' + ic('pencil') + 'Rename town</button><button class="pill t-peach" data-act="reset">Reset town…</button><button class="pill" data-close="1">Close</button></div>';
 }
 function bindMenu(el) {
   el.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { setTheme(+b.dataset.theme); refreshMenuIfOpen(); saveSoon(); });
   el.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; if (b.dataset.q !== 'auto' && b.dataset.q !== tierName) applyQuality(b.dataset.q); perf.slow = perf.fast = 0; refreshMenuIfOpen(); saveSoon(); });
+  const rn = el.querySelector('[data-act="rename"]');
+  if (rn) rn.onclick = () => { closeModal(); nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen()); };
   const r = el.querySelector('[data-act="reset"]');
   if (r) r.onclick = () => { modalEl.firstChild.innerHTML = '<h3>Reset town?</h3><div>This deletes every building and starts a fresh town. It can\'t be undone.</div><div class="row"><button class="pill" id="rsYes">Yes, reset</button><button class="pill" id="rsNo">Keep my town</button></div>'; $('rsYes').onclick = () => { closeModal(); resetTown(); }; $('rsNo').onclick = () => { closeModal(); }; };
 }
