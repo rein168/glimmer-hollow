@@ -15,7 +15,7 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 - The plaza is round or square, and the first building can sit anywhere on it.
 - **Menu → My Towns**: keep up to 8 saved towns, open, delete or **connect** them — a connected town appears as a neighbour town (with its name) joined to yours by a cobble road. **Menu → New town** starts another without losing the current one.
 - The Menu shows the game **version** (bump `VERSION` in `index.html` each release).
-- **Sound** (all synthesised, no audio files): gentle generative music-box/pad music, soft hammering and trowel sounds while a building goes up (busier as bricks land), birds when the camera is near a forest, flowing water near a river. Toggle with the speaker button. Audio starts on your first tap (browser rule); on iPhone/iPad (iOS 16.4+) it plays even with the ringer switch off, on older iOS the silent switch mutes it.
+- **Sound** (all synthesised, no audio files): gentle generative music-box/pad music, soft hammering and trowel sounds while a building goes up (busier as bricks land), birds and rustling leaves near a forest, wind and leaves on a hill, flowing water near a river, cow moos and a cowbell on farmland, and footsteps, clip-clopping horse carts and wheel rumble on a road (the road has walkers and carts moving along it). Toggle with the speaker button. Audio starts on your first tap (browser rule); on iPhone/iPad (iOS 16.4+) it plays even with the ringer switch off, on older iOS the silent switch mutes it.
 - Progress is saved automatically in `localStorage`.
 
 ## Your town
