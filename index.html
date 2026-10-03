@@ -123,7 +123,7 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
-const VERSION = '0.14.1', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
+const VERSION = '0.15.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
@@ -1592,7 +1592,7 @@ function bridgeGeos(geos) {
   const [x, z] = wp(0, 0); geos.push(mk(box(Lb * 0.7, 0.35, 2.2), stone, { x, y: 0.05, z, ry: b.ry }));
 }
 function clearTerrain() {
-  disposeTraffic();
+  disposeTraffic(); disposeWildlife();
   if (TERR.mesh) { scene.remove(TERR.mesh); TERR.mesh.geometry.dispose(); TERR.mesh = null; }
   TERR.fake.forEach(b => disposeBuildingObject(b)); TERR.fake = [];
 }
@@ -1623,7 +1623,7 @@ function buildTerrain() {
     }
   }
   if (geos.length) { TERR.mesh = new THREE.Mesh(mergeGeos(geos), litMat('vc')); TERR.mesh.userData.lk = 'vc'; shadowFlags(TERR.mesh, false, true); TERR.mesh.frustumCulled = false; scene.add(TERR.mesh); }
-  buildConnected(); buildTraffic();
+  buildConnected(); buildTraffic(); buildWildlife();
   if (k === 'farmland') {
     const yard = TERR.farm.plots.find(q => q.kind === 'yard'), r2 = mulberry32(TERR.seed + 41), b = { id: -1, type: 'barn', lot: [yard.x, yard.z], seed: (TERR.seed * 3) | 0, colors: { wall: Math.floor(r2() * 5), wall2: Math.floor(r2() * 5), roof: Math.floor(r2() * 5) }, custom: false, salt: 0 };
     b.name = 'Farm'; buildBuildingObject(b, false); b.rt.mesh.userData.cast = false; TERR.fake.push(b);
@@ -1728,6 +1728,113 @@ function updateTraffic(dt) {
   }
   TRAF.carts.instanceMatrix.needsUpdate = TRAF.walkers.instanceMatrix.needsUpdate = true; TRAF.nearCart = nc; TRAF.nearWalk = nw;
 }
+/* ---------- wildlife: foxes (forest), jumping fish (river), butterflies + birds (farmland) ---------- */
+const WILD = { meshes: [], list: [], t: 0, fish: null, fishT: 2 };
+function disposeWildlife() { WILD.meshes.forEach(m => { scene.remove(m); m.geometry.dispose(); }); WILD.meshes = []; WILD.list = []; WILD.fish = null; WILD.fox = WILD.bf = WILD.bird = null; }
+function instMesh(geo, n) {
+  const m = new THREE.InstancedMesh(geo, litMat('vc'), n); m.userData.lk = 'vc'; m.frustumCulled = false; shadowFlags(m, false, false);
+  for (let i = 0; i < n; i++) m.setColorAt(i, _c.set(0xffffff));
+  scene.add(m); WILD.meshes.push(m); return m;
+}
+const _wq = new Q4(), _wm = new M4(), _wm2 = new M4(), _wm3 = new M4(), _be = new THREE.Euler();
+function makeFlapper(bodyG, wingR, wingL, n) { return { n, body: instMesh(bodyG, n), wr: instMesh(wingR, n), wl: instMesh(wingL, n) }; }
+function placeFlapper(F, i, x, y, z, yaw, pitch, roll, sc, flap, hy, hz) {
+  _be.set(roll, yaw, pitch, 'YZX'); _wq.setFromEuler(_be);
+  _wm.compose(_v.set(x, y, z), _wq, _s.set(sc, sc, sc)); F.body.setMatrixAt(i, _wm);
+  _wm2.makeRotationX(-flap).setPosition(0, hy, hz); _wm3.multiplyMatrices(_wm, _wm2); F.wr.setMatrixAt(i, _wm3);
+  _wm2.makeRotationX(flap).setPosition(0, hy, -hz); _wm3.multiplyMatrices(_wm, _wm2); F.wl.setMatrixAt(i, _wm3);
+}
+function flapperDirty(F) { F.body.instanceMatrix.needsUpdate = F.wr.instanceMatrix.needsUpdate = F.wl.instanceMatrix.needsUpdate = true; }
+function foxGeo() {
+  const o = '#e8823a', w = '#fff3dc', d = '#4a3426';
+  return mergeGeos([mk(box(0.9, 0.34, 0.3), o, { y: 0.5 }), mk(box(0.3, 0.26, 0.26), o, { x: 0.55, y: 0.62 }), mk(box(0.16, 0.12, 0.16), w, { x: 0.74, y: 0.58 }), mk(box(0.07, 0.07, 0.07), '#2a2020', { x: 0.84, y: 0.6 }),
+    mk(cyl(0, 0.07, 0.18, 4), d, { x: 0.5, y: 0.84, z: 0.09 }), mk(cyl(0, 0.07, 0.18, 4), d, { x: 0.5, y: 0.84, z: -0.09 }), mk(box(0.18, 0.2, 0.28), w, { x: 0.34, y: 0.46 }),
+    mk(box(0.09, 0.34, 0.09), d, { x: 0.3, y: 0.17, z: 0.1 }), mk(box(0.09, 0.34, 0.09), d, { x: 0.3, y: 0.17, z: -0.1 }), mk(box(0.09, 0.34, 0.09), d, { x: -0.3, y: 0.17, z: 0.1 }), mk(box(0.09, 0.34, 0.09), d, { x: -0.3, y: 0.17, z: -0.1 }),
+    mk(box(0.55, 0.17, 0.17), o, { x: -0.72, y: 0.58, rz: 0.35 }), mk(box(0.2, 0.17, 0.17), w, { x: -1.0, y: 0.66, rz: 0.35 })]);
+}
+function fishGeo() { return mergeGeos([mk(ico(1, 1), '#ffffff', { sx: 0.34, sy: 0.12, sz: 0.1 }), mk(cyl(0, 0.13, 0.2, 4), '#ffffff', { x: -0.4, rz: Math.PI / 2, sy: 1.2 }), mk(box(0.1, 0.1, 0.02), '#2a2a3a', { x: 0.2, y: 0.04, z: 0.085 }), mk(box(0.1, 0.1, 0.02), '#2a2a3a', { x: 0.2, y: 0.04, z: -0.085 })]); }
+function buildWildlife() {
+  disposeWildlife(); const k = TERR.kind, rng = mulberry32(TERR.seed + 91);
+  if (k === 'forest') {
+    const f = TERR.forest; WILD.fox = instMesh(foxGeo(), 3);
+    for (let i = 0; i < 3; i++) { const a = rng() * TAU, r = f.r * (0.7 + rng() * 0.5); WILD.list.push({ k: 'fox', i, x: f.x + Math.cos(a) * r, z: f.z + Math.sin(a) * r, tx: 0, tz: 0, st: 'sit', t: 1 + rng() * 3, yaw: rng() * TAU, ph: rng() * 6 }); }
+  } else if (k === 'river') {
+    WILD.fish = { mesh: instMesh(fishGeo(), 5), a: [] };
+    const tint = [new C3('#ff9a4a'), new C3('#c9d6e8'), new C3('#8fb8e8'), new C3('#ffd36e'), new C3('#ff8fa8')];
+    for (let i = 0; i < 5; i++) { WILD.fish.mesh.setColorAt(i, tint[i]); WILD.fish.a.push({ on: false, t: 0 }); _m.makeScale(0, 0, 0); WILD.fish.mesh.setMatrixAt(i, _m); }
+    WILD.fish.mesh.instanceColor.needsUpdate = true; WILD.fish.mesh.instanceMatrix.needsUpdate = true;
+  } else if (k === 'farmland') {
+    const F = TERR.farm, wing = (c, sgn) => mk(box(0.2, 0.01, 0.22), c, { z: sgn * 0.11 });
+    WILD.bf = makeFlapper(mk(box(0.14, 0.04, 0.04), '#4a3426'), wing('#ffffff', 1), wing('#ffffff', -1), 14);
+    const cols = [new C3('#ff9a4a'), new C3('#ffd36e'), new C3('#fff6e0'), new C3('#8fcfff'), new C3('#ff9bb5')];
+    for (let i = 0; i < 14; i++) { const c = cols[i % cols.length]; WILD.bf.wr.setColorAt(i, c); WILD.bf.wl.setColorAt(i, c); const a = rng() * TAU, r = Math.sqrt(rng()) * (F.r - 2); WILD.list.push({ k: 'bf', i, x: F.x + Math.cos(a) * r, z: F.z + Math.sin(a) * r, y0: 0.6 + rng() * 1.1, h: rng() * TAU, sp: 0.7 + rng() * 0.7, ph: rng() * 6, hx: F.x, hz: F.z, hr: F.r - 3 }); }
+    WILD.bf.wr.instanceColor.needsUpdate = WILD.bf.wl.instanceColor.needsUpdate = true;
+    const bw = (sgn) => mk(box(0.1, 0.012, 0.3), '#7a6a58', { z: sgn * 0.15 });
+    WILD.bird = makeFlapper(mergeGeos([mk(ico(0.14, 1), '#ffffff', { sx: 1.25, sy: 0.9 }), mk(ico(0.09, 0), '#ffffff', { x: 0.17, y: 0.07 }), mk(cyl(0, 0.03, 0.09, 4), '#ff9a4a', { x: 0.28, y: 0.06, rz: -Math.PI / 2 }), mk(box(0.16, 0.02, 0.1), '#ffffff', { x: -0.2, y: 0.02 })]), bw(1), bw(-1), 12);
+    const bc = [new C3('#a8825a'), new C3('#b0b0bc'), new C3('#d6805a'), new C3('#e8c75a')];
+    for (let i = 0; i < 12; i++) {
+      WILD.bird.body.setColorAt(i, bc[i % 4]);
+      if (i < 8) { const a = rng() * TAU, r = Math.sqrt(rng()) * (F.r - 4); WILD.list.push({ k: 'bg', i, x: F.x + Math.cos(a) * r, z: F.z + Math.sin(a) * r, y: 0, st: 'peck', t: 0.5 + rng() * 2, yaw: rng() * TAU, fx: 0, fz: 0, tx: 0, tz: 0, ph: rng() * 6, hx: F.x, hz: F.z, hr: F.r - 3 }); }
+      else WILD.list.push({ k: 'bf2', i, cx: F.x + (rng() - 0.5) * 16, cz: F.z + (rng() - 0.5) * 16, rad: 10 + rng() * 10, ang: rng() * TAU, w: (0.35 + rng() * 0.3) * (rng() < 0.5 ? 1 : -1), alt: 8 + rng() * 5, ph: rng() * 6 });
+    }
+    WILD.bird.body.instanceColor.needsUpdate = true;
+  }
+}
+function updateWildlife(dt) {
+  if (!WILD.meshes.length) return; WILD.t += dt; const t = WILD.t, rng = Math.random;
+  for (const a of WILD.list) {
+    if (a.k === 'fox') {
+      const f = TERR.forest;
+      if (a.st === 'sit') { a.t -= dt; if (a.t <= 0) { const an = rng() * TAU, r = f.r * (0.72 + rng() * 0.55); a.tx = f.x + Math.cos(an) * r; a.tz = f.z + Math.sin(an) * r; a.st = 'walk'; a.sp = rng() < 0.3 ? 2.4 : 1.0; } }
+      else { const dx = a.tx - a.x, dz = a.tz - a.z, d = Math.hypot(dx, dz); a.yaw += wrapAng(Math.atan2(dz, dx) - a.yaw) * Math.min(1, dt * 4); if (d < 0.5) { a.st = 'sit'; a.t = 2 + rng() * 5; } else { a.x += Math.cos(a.yaw) * a.sp * dt; a.z += Math.sin(a.yaw) * a.sp * dt; } }
+      const sit = a.st === 'sit', bob = sit ? 0 : Math.abs(Math.sin(t * (a.sp > 1.5 ? 11 : 6) + a.ph)) * 0.05;
+      _q.setFromAxisAngle(Y_AXIS, -a.yaw); WILD.fox.setMatrixAt(a.i, _m.compose(_v.set(a.x, bob, a.z), _q, _s.set(1.8, sit ? 1.5 : 1.8, 1.8)));
+    } else if (a.k === 'bf') {
+      a.h += (Math.sin(t * 0.9 + a.ph) * 0.9 + (rng() - 0.5) * 2.2) * dt; const dx = a.hx - a.x, dz = a.hz - a.z;
+      if (Math.hypot(dx, dz) > a.hr) a.h += wrapAng(Math.atan2(dz, dx) - a.h) * dt * 1.8;
+      a.x += Math.cos(a.h) * a.sp * dt; a.z += Math.sin(a.h) * a.sp * dt;
+      placeFlapper(WILD.bf, a.i, a.x, a.y0 + Math.sin(t * 2.1 + a.ph) * 0.25, a.z, -a.h, Math.sin(t * 3 + a.ph) * 0.2, 0, 1.7, 0.15 + 0.9 * (0.5 + 0.5 * Math.sin(t * 22 + a.ph)), 0.03, 0.02);
+    } else if (a.k === 'bg') {
+      if (a.st === 'peck') {
+        a.t -= dt; const pk = Math.max(0, Math.sin(t * 9 + a.ph)) * 0.7;
+        placeFlapper(WILD.bird, a.i, a.x, 0.14, a.z, -a.yaw, -pk, 0, 1.7, -1.2, 0.04, 0.1);
+        if (a.t <= 0) { const r = rng(); if (r < 0.6) { const an = rng() * TAU, d = 0.5 + rng() * 1.2; a.tx = a.x + Math.cos(an) * d; a.tz = a.z + Math.sin(an) * d; a.fx = a.x; a.fz = a.z; a.st = 'hop'; a.t = 0; a.yaw = an; } else { const an = rng() * TAU, d = 6 + rng() * 8; let tx = a.x + Math.cos(an) * d, tz = a.z + Math.sin(an) * d; if (Math.hypot(tx - a.hx, tz - a.hz) > a.hr) { tx = a.hx + (tx - a.hx) * 0.4; tz = a.hz + (tz - a.hz) * 0.4; } a.tx = tx; a.tz = tz; a.fx = a.x; a.fz = a.z; a.st = 'fly'; a.t = 0; a.yaw = Math.atan2(tz - a.z, tx - a.x); } }
+      } else {
+        const dur = a.st === 'hop' ? 0.3 : 1.4; a.t += dt / dur; const u = Math.min(1, a.t), hgt = a.st === 'hop' ? 0.25 : 3.2;
+        a.x = lerp(a.fx, a.tx, u); a.z = lerp(a.fz, a.tz, u); const y = 0.14 + Math.sin(Math.PI * u) * hgt;
+        placeFlapper(WILD.bird, a.i, a.x, y, a.z, -a.yaw, a.st === 'fly' ? (u < 0.5 ? 0.25 : -0.25) : 0, 0, 1.7, a.st === 'fly' ? 0.2 + 0.8 * (0.5 + 0.5 * Math.sin(t * 26 + a.ph)) : 0.5, 0.04, 0.1);
+        if (u >= 1) { a.st = 'peck'; a.t = 0.8 + rng() * 2.5; }
+      }
+    } else if (a.k === 'bf2') {
+      a.ang += a.w * dt / (a.rad / 10); const x = a.cx + Math.cos(a.ang) * a.rad, z = a.cz + Math.sin(a.ang) * a.rad, head = Math.atan2(Math.cos(a.ang) * Math.sign(a.w), -Math.sin(a.ang) * Math.sign(a.w)), burst = Math.sin(t * 0.7 + a.ph) > -0.2 ? 1 : 0.1;
+      placeFlapper(WILD.bird, a.i, x, a.alt + Math.sin(t * 0.8 + a.ph) * 0.8, z, -head, 0.05, Math.sign(a.w) * 0.25, 2.0, 0.3 + 0.7 * burst * (0.5 + 0.5 * Math.sin(t * 13 + a.ph)), 0.04, 0.1);
+    }
+  }
+  if (WILD.fox) WILD.fox.instanceMatrix.needsUpdate = true; if (WILD.bf) flapperDirty(WILD.bf); if (WILD.bird) flapperDirty(WILD.bird);
+  // fish: a jump every few seconds, near the camera
+  if (WILD.fish) {
+    const F = WILD.fish, pts = TERR.pts; WILD.fishT -= dt;
+    if (WILD.fishT <= 0 && !S.paused) {
+      WILD.fishT = 1.5 + Math.random() * 2.8; const idle = F.a.findIndex(q => !q.on);
+      if (idle >= 0) {
+        const near = []; for (let i = 1; i < pts.length - 1; i++) if (Math.hypot(pts[i][0] - cam.target.x, pts[i][1] - cam.target.z) < 55) near.push(i);
+        if (near.length) {
+          const i = near[Math.floor(Math.random() * near.length)], p = pts[i], q = pts[i + 1], l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, tx = (q[0] - p[0]) / l, tz = (q[1] - p[1]) / l, side = (Math.random() - 0.5) * TERR.width * 0.6, sg = Math.random() < 0.5 ? 1 : -1, sp = 1.6 + Math.random() * 1.6;
+          Object.assign(F.a[idle], { on: true, t: 0, x: p[0] - tz * side, z: p[1] + tx * side, vx: tx * sp * sg + (Math.random() - 0.5), vz: tz * sp * sg + (Math.random() - 0.5), vy: 4.6 + Math.random() * 2, sc: 1 + Math.random() * 0.6 });
+          sparkle(F.a[idle].x, 0.1, F.a[idle].z, 6, 1.4, WATERC); Audio.splash(clamp(1 - Math.hypot(F.a[idle].x - cam.target.x, F.a[idle].z - cam.target.z) / 55, 0, 1));
+        }
+      }
+    }
+    F.a.forEach((a, i) => {
+      if (!a.on) return; a.t += dt; const g = 11, y = 0.05 + a.vy * a.t - 0.5 * g * a.t * a.t;
+      if (y < 0.04 && a.t > 0.2) { a.on = false; sparkle(a.x + a.vx * a.t, 0.1, a.z + a.vz * a.t, 8, 1.6, WATERC); Audio.splash(clamp(1 - Math.hypot(a.x - cam.target.x, a.z - cam.target.z) / 55, 0, 1)); F.mesh.setMatrixAt(i, _m.makeScale(0, 0, 0)); return; }
+      const vy = a.vy - g * a.t, hs = Math.hypot(a.vx, a.vz); _be.set(0, -Math.atan2(a.vz, a.vx), Math.atan2(vy, hs), 'YZX'); _q.setFromEuler(_be);
+      F.mesh.setMatrixAt(i, _m.compose(_v.set(a.x + a.vx * a.t, y, a.z + a.vz * a.t), _q, _s.set(a.sc, a.sc, a.sc)));
+    });
+    F.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+const WATERC = new C3('#d9f2ff');
 function newSetting(kind) {
   const k = kind && kind !== 'random' ? kind : TERR_KINDS[Math.floor(Math.random() * TERR_KINDS.length)];
   return { kind: k, seed: (Math.random() * 2147483647) | 0 };
@@ -2030,6 +2137,17 @@ const Audio = {
     const s3 = mkN(), cb = c.createBiquadFilter(), cl = c.createGain(); cb.type = 'bandpass'; cb.frequency.value = 170; cb.Q.value = 0.9; cl.gain.value = 0; s3.connect(cb); cb.connect(cl); cl.connect(this.amb); s3.start();
     this.leaves = lvl; this.wind = wl; this.rumble = cl;
   },
+  splash(prox) {
+    if (!this.ctx || this.ctx.state !== 'running' || !S.settings.sound || prox < 0.03) return; const c = this.ctx, t = c.currentTime + 0.01, pan = (Math.random() * 2 - 1) * 0.5;
+    const n = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain(); n.buffer = this.noise; bp.type = 'bandpass'; bp.frequency.value = 1300; bp.Q.value = 0.8; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06 * prox, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    n.connect(bp); bp.connect(g); this.route(g, pan, this.amb, 0.3); n.start(t, Math.random(), 0.3);
+    const o = c.createOscillator(), g2 = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(620, t); o.frequency.exponentialRampToValueAtTime(190, t + 0.14); g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(0.04 * prox, t + 0.01); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.18); o.connect(g2); this.route(g2, pan, this.amb, 0.3); o.start(t); o.stop(t + 0.2);
+  },
+  yip(prox) {   // a fox calls from the woods
+    const c = this.ctx, t = c.currentTime + 0.02, pan = (Math.random() * 2 - 1) * 0.8;
+    for (let i = 0; i < 2; i++) { const o = c.createOscillator(), g = c.createGain(), tt = t + i * 0.22; o.type = 'sawtooth'; o.frequency.setValueAtTime(700, tt); o.frequency.exponentialRampToValueAtTime(1250, tt + 0.1); g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.022 * prox, tt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.16);
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1500; f.Q.value = 2; o.connect(f); f.connect(g); this.route(g, pan, this.amb, 0.5); o.start(tt); o.stop(tt + 0.2); }
+  },
   moo(prox) {
     const c = this.ctx, t = c.currentTime + 0.02, pan = (Math.random() * 2 - 1) * 0.8, o = c.createOscillator(), f1 = c.createBiquadFilter(), f2 = c.createBiquadFilter(), g = c.createGain(), vib = c.createOscillator(), vg = c.createGain();
     o.type = 'sawtooth'; o.frequency.setValueAtTime(135 + Math.random() * 25, t); o.frequency.linearRampToValueAtTime(100 + Math.random() * 15, t + 1.4);
@@ -2067,6 +2185,7 @@ const Audio = {
         this.hamT -= dt; if (this.hamT <= 0) { this.hammer(); this.hamT = lerp(3.4, 1.0, Math.min(1, this.activity)) * (0.6 + Math.random() * 0.9); }
         this.layT -= dt; if (this.layT <= 0) { this.layBrick(); this.layT = lerp(5.5, 2.2, Math.min(1, this.activity)) * (0.7 + Math.random() * 0.8); }
       }
+      if (env.forest > 0.25 && TERR.kind === 'forest') { this.yipT = (this.yipT == null ? 12 : this.yipT) - dt; if (this.yipT <= 0) { this.yip(env.forest); this.yipT = 20 + Math.random() * 25; } }
       if (env.forest > 0.05) { this.birdT -= dt; if (this.birdT <= 0) { this.chirps(env.forest); this.birdT = (1.0 + Math.random() * 3.5) / (0.35 + env.forest); } }
     }
     if (on) {
@@ -2105,7 +2224,7 @@ function audioEnv() {
   if (TERR.kind === 'forest' && TERR.forest) { const f = TERR.forest, d = Math.hypot(cx - f.x, cz - f.z) - f.r * 0.6; e.forest = clamp(1 - d / 50, 0, 1); e.leaves = Math.max(e.leaves, e.forest); }
   else if (TERR.kind === 'river' && TERR.pts.length) { const d = distToPts(cx, cz) - TERR.width / 2; e.river = clamp(1 - d / 45, 0, 1); }
   else if (TERR.kind === 'hill' && TERR.hill) { const h = TERR.hill, d = Math.hypot(cx - h.x, cz - h.z) - h.r * 0.5; e.hill = clamp(1 - d / 45, 0, 1); e.leaves = Math.max(e.leaves, e.hill * 0.7); e.wind = e.hill * 0.9; }
-  else if (TERR.kind === 'farmland' && TERR.farm) { const f = TERR.farm, d = Math.hypot(cx - f.x, cz - f.z) - f.r * 0.4; e.farm = clamp(1 - d / 55, 0, 1); e.leaves = Math.max(e.leaves, 0.25 * e.farm); }
+  else if (TERR.kind === 'farmland' && TERR.farm) { const f = TERR.farm, d = Math.hypot(cx - f.x, cz - f.z) - f.r * 0.4; e.farm = clamp(1 - d / 55, 0, 1); e.leaves = Math.max(e.leaves, 0.25 * e.farm); e.forest = e.farm * 0.55; }
   else if (TERR.kind === 'road') { e.cart = clamp(1 - TRAF.nearCart / 45, 0, 1); e.walk = clamp(1 - TRAF.nearWalk / 35, 0, 1); }
   return e;
 }
@@ -2692,7 +2811,7 @@ function tick(dtMs, t0) {
   const dt = S.paused ? 0 : Math.min(dtMs / 1000, 0.05); simT += dt;
   updateTimers(dt); updateTweens(dt);
   updateCamera(Math.min(dtMs / 1000, 0.05)); updateOrb(dt, simT); updateSite(dt); updateBricks(dt, simT); lsUpdate(dt); updateParticles(dt); updateFlags(dt, simT);
-  updateLabelPos(); syncDone(); updateProg(); updateTraffic(dt); updateRegionLabels(); Audio.update(dt, audioEnv());
+  updateLabelPos(); syncDone(); updateProg(); updateTraffic(dt); updateWildlife(dt); updateRegionLabels(); Audio.update(dt, audioEnv());
   renderer.render(scene, camera);
   perfSample(dtMs, performance.now() - t0, dt);
 }

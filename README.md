@@ -17,6 +17,7 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 - The Menu shows the game **version** (bump `VERSION` in `index.html` each release).
 - **Sound** (all synthesised, no audio files): gentle generative music-box/pad music, soft hammering and trowel sounds while a building goes up (busier as bricks land), birds and rustling leaves near a forest, wind and leaves on a hill, flowing water near a river, cow moos and a cowbell on farmland, and footsteps, clip-clopping horse carts and wheel rumble on a road (the road has walkers and carts moving along it). Tap the speaker button for the Sound panel: separate volume sliders for Music, Background sounds and Effects, plus mute. Audio starts on your first tap (browser rule); on iPhone/iPad (iOS 16.4+) it plays even with the ringer switch off, on older iOS the silent switch mutes it.
 - **Idle building**: while the game is open and on screen your builders add one brick at a time on their own (a few minutes per building). Touching speeds it up a lot — hold to sweep bricks in (~25 s per building), or tap for a quick burst. Nothing builds while the app is in the background or closed. A thin bar under the town name shows progress.
+- **Wildlife**: foxes roam the edge of a forest (and yip now and then), fish leap out of a river with a splash, and butterflies, ground birds and circling birds fill farmland fields.
 - Progress is saved automatically in `localStorage`.
 
 ## Your town
