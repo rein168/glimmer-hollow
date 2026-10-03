@@ -15,6 +15,7 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 - The plaza is round or square, and the first building can sit anywhere on it.
 - **Menu → My Towns**: keep up to 8 saved towns, open, delete or **connect** them — a connected town appears as a neighbour town (with its name) joined to yours by a cobble road. **Menu → New town** starts another without losing the current one.
 - The Menu shows the game **version** (bump `VERSION` in `index.html` each release).
+- **Sound** (all synthesised, no audio files): gentle generative music-box/pad music, soft hammering and trowel sounds while a building goes up (busier as bricks land), birds when the camera is near a forest, flowing water near a river. Toggle with the speaker button. Audio starts on your first tap (browser rule); on iPhone/iPad (iOS 16.4+) it plays even with the ringer switch off, on older iOS the silent switch mutes it.
 - Progress is saved automatically in `localStorage`.
 
 ## Your town
@@ -52,7 +53,7 @@ In `CONFIG.names`: `owners`, `surnames`, `streets`, `landmarkPrefix`, `towns`, a
 - Merged buildings use bevelled bricks on Medium/High (about 44 triangles per brick); a very large town photographed in Town mode is heavy for old phones.
 - Windows are lit with flat warm glass (no real night lighting). Interiors are hollow.
 - Needs an internet connection to fetch three.js from the CDN (host a local copy and change the import URL to go offline).
-- Audio only starts after the first touch (browser autoplay rules). Silent-mode iPhones may mute Web Audio.
+- Audio only starts after the first touch (browser autoplay rules). On iOS older than 16.4 the ringer/silent switch mutes Web Audio.
 
 ## iOS vs Android (photos)
 - **iOS Safari 15+**: `navigator.share` with files opens the share sheet → *Save Image*. If Safari rejects the share (user-activation timing), a preview sheet appears: tap **Share / Save** or long-press the picture → *Add to Photos*. Plain downloads land in Files, not Photos.

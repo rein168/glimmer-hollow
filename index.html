@@ -113,7 +113,7 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
-const VERSION = '0.10.1', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
+const VERSION = '0.11.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
@@ -1830,34 +1830,163 @@ function rebuildLandscape() {
 /* ============================================================
    AUDIO (Web Audio, started on first touch)
    ============================================================ */
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const CHORDS = [
+  { notes: [60, 64, 67, 71], root: 48, pent: [72, 74, 76, 79, 81] },   // Cmaj7
+  { notes: [57, 60, 64, 67], root: 45, pent: [69, 72, 74, 76, 79] },   // Am7
+  { notes: [53, 57, 60, 64], root: 41, pent: [65, 67, 69, 72, 74] },   // Fmaj7
+  { notes: [55, 59, 62, 64], root: 43, pent: [67, 69, 71, 74, 76] }    // G6
+];
 const Audio = {
-  ctx: null, master: null, last: 0,
+  ctx: null, master: null, music: null, amb: null, sfx: null, verb: null, noise: null, water: null, panOk: false,
+  last: 0, activity: 0, hamT: 2.5, layT: 4, birdT: 2, wT: 0, nextT: 0, step: 0, lastNote: 0, musicTimer: 0,
   init() {
     if (this.ctx) { if (this.ctx.state === 'suspended') try { this.ctx.resume(); } catch (e) {} return; }
     try {
       const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.9; this.master.connect(this.ctx.destination);
-      const b = this.ctx.createBuffer(1, 1, 22050), s = this.ctx.createBufferSource(); s.buffer = b; s.connect(this.ctx.destination); s.start(0);
-      if (this.ctx.state === 'suspended') this.ctx.resume();
-    } catch (e) { this.ctx = null; }
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}   // iOS 16.4+: play even with the ringer switch off
+      const c = this.ctx = new AC();
+      this.master = c.createGain(); this.master.gain.value = 0;
+      const comp = c.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4; this.master.connect(comp); comp.connect(c.destination);
+      this.sfx = c.createGain(); this.sfx.connect(this.master);
+      this.music = c.createGain(); this.music.gain.value = 0.55; this.music.connect(this.master);
+      this.amb = c.createGain(); this.amb.connect(this.master);
+      const len = Math.floor(c.sampleRate * 2.4), ir = c.createBuffer(2, len, c.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+      this.verb = c.createConvolver(); this.verb.buffer = ir; const vg = c.createGain(); vg.gain.value = 0.5; this.verb.connect(vg); vg.connect(this.master);
+      const nl = c.sampleRate * 2, nb = c.createBuffer(1, nl, c.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nl; i++) nd[i] = Math.random() * 2 - 1;
+      this.noise = nb; this.panOk = !!c.createStereoPanner;
+      const sb = c.createBuffer(1, 1, 22050), ss = c.createBufferSource(); ss.buffer = sb; ss.connect(c.destination); ss.start(0);
+      if (c.state === 'suspended') c.resume();
+      this.startWater(); this.sync(); this.nextT = c.currentTime + 0.6; this.musicTimer = setInterval(() => this.scheduleMusic(), 250);
+    } catch (e) { console.warn('audio init failed', e); this.ctx = null; }
   },
-  tone(f, t0, dur, vol, type) {
-    const c = this.ctx, o = c.createOscillator(), g = c.createGain(); o.type = type || 'triangle'; o.frequency.value = f;
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(this.master); o.start(t0); o.stop(t0 + dur + 0.02);
+  sync() {
+    if (!this.ctx) return; const on = S.settings.sound && !S.paused && !S.hidden;
+    this.master.gain.setTargetAtTime(on ? 0.9 : 0, this.ctx.currentTime, 0.25);
+    if (on && this.ctx.state === 'suspended') try { this.ctx.resume(); } catch (e) {}
   },
-  tink(i) {
-    if (!S.settings.sound || !this.ctx) return; const now = this.ctx.currentTime; if (now - this.last < 0.05) return; this.last = now;
-    const pent = [1046, 1175, 1318, 1568, 1760, 2093], f = pent[(Math.random() * pent.length) | 0];
-    this.tone(f, now, 0.22, 0.07, 'triangle'); this.tone(f * 2.01, now, 0.12, 0.025, 'sine');
+  route(node, pan, bus, send) {
+    let out = node; if (this.panOk && pan) { const p = this.ctx.createStereoPanner(); p.pan.value = pan; node.connect(p); out = p; }
+    out.connect(bus || this.sfx); if (send) { const g = this.ctx.createGain(); g.gain.value = send; out.connect(g); g.connect(this.verb); }
+  },
+  pluck(f, t, vol, bus) {   // music-box note
+    const c = this.ctx, g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+    const o = c.createOscillator(), o2 = c.createOscillator(), g2 = c.createGain(); o.type = 'sine'; o.frequency.value = f; o2.type = 'triangle'; o2.frequency.value = f * 2.005; g2.gain.value = 0.22;
+    o.connect(g); o2.connect(g2); g2.connect(g); this.route(g, 0, bus || this.music, 0.8); o.start(t); o2.start(t); o.stop(t + 1.9); o2.stop(t + 1.9);
+  },
+  pad(notes, t, dur) {
+    const c = this.ctx, g = c.createGain(), f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 950;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.055, t + 2.4); g.gain.setValueAtTime(0.055, t + dur); g.gain.linearRampToValueAtTime(0.0001, t + dur + 2.6);
+    notes.forEach((m, i) => {
+      const o = c.createOscillator(), o2 = c.createOscillator(), h = c.createGain(); o.type = 'sine'; o2.type = 'triangle'; o.frequency.value = mtof(m - 12); o2.frequency.value = mtof(m - 12); o2.detune.value = 5 + i; h.gain.value = 0.5;
+      o.connect(g); o2.connect(h); h.connect(g); o.start(t); o2.start(t); o.stop(t + dur + 2.7); o2.stop(t + dur + 2.7);
+    });
+    g.connect(f); this.route(f, 0, this.music, 0.6);
+  },
+  bass(m, t) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = mtof(m - 12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.1, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.6); o.connect(g); this.route(g, 0, this.music, 0.2); o.start(t); o.stop(t + 3.7);
+  },
+  scheduleMusic() {
+    const c = this.ctx; if (!c) return;
+    if (c.state !== 'running' || !S.settings.sound || S.paused || S.hidden) { if (this.nextT < c.currentTime) this.nextT = c.currentTime + 0.4; return; }
+    const half = 60 / 58 / 2;
+    while (this.nextT < c.currentTime + 1.2) {
+      const st = this.step++, t = this.nextT, ci = Math.floor(st / 16) % CHORDS.length, ch = CHORDS[ci];
+      if (st % 16 === 0) { this.pad(ch.notes, t, 16 * half); this.bass(ch.root, t); }
+      if (st % 2 === 0 && Math.random() < (st % 16 < 12 ? 0.55 : 0.3)) {
+        const pool = ch.notes.map(n => n + 12).concat(ch.pent); let n = pool[Math.floor(Math.random() * pool.length)]; if (n === this.lastNote) n = pool[Math.floor(Math.random() * pool.length)]; this.lastNote = n;
+        this.pluck(mtof(n), t + (Math.random() - 0.5) * 0.03, 0.04 + Math.random() * 0.025);
+        if (Math.random() < 0.12) this.pluck(mtof(n + 7), t + 0.04, 0.025);
+      }
+      this.nextT += half;
+    }
+  },
+  knock(t, vol, pan, tone) {   // wood / stone knock
+    const c = this.ctx, n = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain();
+    n.buffer = this.noise; bp.type = 'bandpass'; bp.frequency.value = tone; bp.Q.value = 1.3; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    n.connect(bp); bp.connect(g); this.route(g, pan, this.amb, 0.25); n.start(t, Math.random(), 0.1);
+    const o = c.createOscillator(), g2 = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(tone * 0.16, t); o.frequency.exponentialRampToValueAtTime(tone * 0.07, t + 0.09);
+    g2.gain.setValueAtTime(vol * 0.9, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.11); o.connect(g2); this.route(g2, pan, this.amb); o.start(t); o.stop(t + 0.15);
+  },
+  hammer() {
+    const c = this.ctx, pan = (Math.random() * 2 - 1) * 0.7, tone = [900, 1250, 1700][Math.floor(Math.random() * 3)], n = 1 + Math.floor(Math.random() * 3), vol = 0.05 + Math.min(1, this.activity) * 0.04;
+    let t = c.currentTime + 0.02; for (let i = 0; i < n; i++) { this.knock(t, vol * (0.85 + Math.random() * 0.3), pan, tone * (0.95 + Math.random() * 0.1)); t += 0.2 + Math.random() * 0.08; }
+    if (Math.random() < 0.3) { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = 2600 + Math.random() * 600; g.gain.setValueAtTime(0.02, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25); o.connect(g); this.route(g, pan, this.amb, 0.5); o.start(t); o.stop(t + 0.3); }
+  },
+  layBrick() {   // trowel scrape then a soft tap
+    const c = this.ctx, pan = (Math.random() * 2 - 1) * 0.7, t = c.currentTime + 0.02, n = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain();
+    n.buffer = this.noise; bp.type = 'bandpass'; bp.Q.value = 1.0; bp.frequency.setValueAtTime(3000, t); bp.frequency.exponentialRampToValueAtTime(1500, t + 0.16);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.035, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    n.connect(bp); bp.connect(g); this.route(g, pan, this.amb, 0.2); n.start(t, Math.random(), 0.2);
+    this.knock(t + 0.2, 0.045, pan, 700);
+  },
+  chirps(prox) {
+    const c = this.ctx, pan = (Math.random() * 2 - 1) * 0.8, kind = Math.random(), base = 2600 + Math.random() * 2400, vol = 0.06 * prox;
+    const n = kind < 0.35 ? 2 + Math.floor(Math.random() * 3) : kind < 0.7 ? 1 + Math.floor(Math.random() * 2) : 4 + Math.floor(Math.random() * 4);
+    let t = c.currentTime + 0.02;
+    for (let i = 0; i < n; i++) {
+      const dur = kind > 0.7 ? 0.04 : 0.08 + Math.random() * 0.07, f0 = base * (kind < 0.35 ? 1 - i * 0.06 : 1 + (Math.random() - 0.5) * 0.15), f1 = f0 * (kind < 0.35 ? 0.8 : 1.35);
+      const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); this.route(g, pan, this.amb, 0.3); o.start(t); o.stop(t + dur + 0.03); t += dur + (kind > 0.7 ? 0.05 : 0.07 + Math.random() * 0.08);
+    }
+  },
+  startWater() {   // looping filtered noise: a slow, burbling stream
+    const c = this.ctx, mk2 = (freq, q, lfoHz, lfoDepth) => {
+      const src = c.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+      const g = c.createGain(); g.gain.value = 0; src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(this.amb);
+      const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = lfoHz; lg.gain.value = lfoDepth; lfo.connect(lg); lg.connect(bp.frequency); lfo.start(); src.start();
+      return g;
+    };
+    this.water = [mk2(500, 0.5, 0.23, 160), mk2(1400, 1.2, 1.4, 500)];
+  },
+  update(dt, env) {
+    const c = this.ctx; if (!c || c.state !== 'running') return;
+    const on = S.settings.sound && !S.paused && !S.hidden;
+    this.activity = Math.max(0, this.activity - dt * 0.25);
+    if (on) {
+      if (env.building) {
+        this.hamT -= dt; if (this.hamT <= 0) { this.hammer(); this.hamT = lerp(3.4, 1.0, Math.min(1, this.activity)) * (0.6 + Math.random() * 0.9); }
+        this.layT -= dt; if (this.layT <= 0) { this.layBrick(); this.layT = lerp(5.5, 2.2, Math.min(1, this.activity)) * (0.7 + Math.random() * 0.8); }
+      }
+      if (env.forest > 0.05) { this.birdT -= dt; if (this.birdT <= 0) { this.chirps(env.forest); this.birdT = (1.0 + Math.random() * 3.5) / (0.35 + env.forest); } }
+    }
+    this.wT -= dt;
+    if (this.wT <= 0 && this.water) { this.wT = 0.15; const k = on ? env.river : 0; this.water[0].gain.setTargetAtTime(k * 0.22, c.currentTime, 0.4); this.water[1].gain.setTargetAtTime(k * 0.07, c.currentTime, 0.4); }
+  },
+  tink(i) {   // a brick settles into place: stone clack + soft marimba note
+    if (!S.settings.sound || !this.ctx || this.ctx.state !== 'running') return; const c = this.ctx, now = c.currentTime; if (now - this.last < 0.05) return; this.last = now;
+    this.activity = Math.min(1.5, this.activity + 0.45);
+    this.knock(now, 0.06, (Math.random() * 2 - 1) * 0.3, 1400);
+    const pent = [523, 587, 659, 784, 880, 1047, 1175, 1318], f = pent[(Math.random() * pent.length) | 0];
+    this.pluck(f, now + 0.01, 0.06, this.sfx);
   },
   chime() {
     if (!S.settings.sound || !this.ctx) return; const now = this.ctx.currentTime;
-    [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, now + i * 0.09, 0.5, 0.07, 'sine'));
+    [523, 659, 784, 1046, 1318].forEach((f, i) => this.pluck(f, now + i * 0.11, 0.09, this.sfx));
   },
-  shutter() { if (!S.settings.sound || !this.ctx) return; const now = this.ctx.currentTime; this.tone(1800, now, 0.05, 0.05, 'square'); this.tone(900, now + 0.05, 0.08, 0.04, 'square'); }
+  pop() {
+    if (!S.settings.sound || !this.ctx || this.ctx.state !== 'running') return; const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(620, t); o.frequency.exponentialRampToValueAtTime(900, t + 0.05); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(g); g.connect(this.sfx); o.start(t); o.stop(t + 0.1);
+  },
+  shutter() {
+    if (!S.settings.sound || !this.ctx) return; const c = this.ctx, t = c.currentTime;
+    this.knock(t, 0.08, 0, 2200); this.knock(t + 0.07, 0.06, 0, 1500);
+  }
 };
+function audioEnv() {
+  const e = { building: !!site && site.state !== 'celebrate' && S.mode === 'play', forest: 0, river: 0 };
+  if (TERR.kind === 'forest' && TERR.forest) { const f = TERR.forest, d = Math.hypot(cam.target.x - f.x, cam.target.z - f.z) - f.r * 0.6; e.forest = clamp(1 - d / 50, 0, 1); }
+  else if (TERR.kind === 'river' && TERR.pts.length) { const d = distToPts(cam.target.x, cam.target.z) - TERR.width / 2; e.river = clamp(1 - d / 45, 0, 1); }
+  return e;
+}
 document.addEventListener('pointerdown', () => Audio.init(), { capture: true, passive: true });
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.pill')) Audio.pop(); }, true);
 
 /* ============================================================
    INPUT (Pointer Events only; one finger builds, two fingers orbit/zoom)
@@ -2080,7 +2209,7 @@ $('label').onclick = () => {
   nameModal('Rename building', b.name, v => setBuildingName(b, v, true), () => { rerollName(b); return b.name; });
 };
 $('btnTown').onclick = () => nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen());
-$('btnSound').onclick = () => { S.settings.sound = !S.settings.sound; Audio.init(); refreshUI(); saveSoon(); };
+$('btnSound').onclick = () => { S.settings.sound = !S.settings.sound; Audio.init(); Audio.sync(); refreshUI(); saveSoon(); };
 [['btnRotL', -1], ['btnRotR', 1]].forEach(([id, dir]) => {
   const el = $(id); el.style.pointerEvents = 'auto';
   el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); cam.azT += dir * 0.3; rotDir = dir; });
@@ -2091,7 +2220,7 @@ function setExplore(on) {
   if (on) { cam.zMin = 0.4; cam.zMax = 3.2; cam.away = true; } else { cam.zMin = CONFIG.zoomMin; cam.zMax = CONFIG.zoomMax; cam.zoomT = clamp(cam.zoomT, cam.zMin, cam.zMax); camFocusSite(1.0); }
 }
 $('btnExplore').onclick = () => setExplore(!S.explore);
-function setPaused(p) { S.paused = p; $('paused').style.display = p ? 'flex' : 'none'; if (p) hold.active = false; }
+function setPaused(p) { S.paused = p; $('paused').style.display = p ? 'flex' : 'none'; if (p) hold.active = false; Audio.sync(); }
 $('btnPause').onclick = () => setPaused(true); $('btnResume').onclick = () => setPaused(false);
 $('btnPhoto').onclick = enterPhoto; $('dnTowns').onclick = () => openTowns(); $('dnNew').onclick = () => openNewTownSheet(); $('pbExit').onclick = exitPhoto; $('pbShutter').onclick = shutter;
 $('pbMode').onclick = () => { S.photoSub = S.photoSub === 'building' ? 'town' : 'building'; setPbMode(); photoFocus(); };
@@ -2375,13 +2504,13 @@ function tick(dtMs, t0) {
   const dt = S.paused ? 0 : Math.min(dtMs / 1000, 0.05); simT += dt;
   updateTimers(dt); updateTweens(dt);
   updateCamera(Math.min(dtMs / 1000, 0.05)); updateOrb(dt, simT); updateSite(dt); updateBricks(dt, simT); lsUpdate(dt); updateParticles(dt); updateFlags(dt, simT);
-  updateLabelPos(); syncDone();
+  updateLabelPos(); syncDone(); Audio.update(dt, audioEnv());
   renderer.render(scene, camera);
   perfSample(dtMs, performance.now() - t0, dt);
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { S.hidden = true; cancelAnimationFrame(raf); saveNow(); hold.active = false; }
-  else { S.hidden = false; last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); perf.grace = 2; }
+  if (document.hidden) { S.hidden = true; cancelAnimationFrame(raf); saveNow(); hold.active = false; Audio.sync(); }
+  else { S.hidden = false; Audio.sync(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); perf.grace = 2; }
 });
 window.addEventListener('resize', () => { resize(); setTimeout(resize, 250); });
 window.addEventListener('orientationchange', () => setTimeout(resize, 300));
