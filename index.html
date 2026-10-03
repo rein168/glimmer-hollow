@@ -107,7 +107,7 @@ const CONFIG = {
   maxPixels: 2.5e6, photoMaxPixels: 8e6, photoMaxScale: 2,
   fov: 40, pitchDeg: 40, pitchMin: 24, pitchMax: 62, zoomMin: 0.55, zoomMax: 1.7,
   lotSpacing: 12, plazaRadius: 9.6, fitRadius: 6.8,
-  brick: { L: 1.0, H: 0.4, T: 0.34, rowH: 2 },   // rowH = wall courses merged into one brick row
+  brick: { L: 1.0, H: 0.4, T: 0.4 },   // walls are built from mixed big/small bricks (random 1-3 courses tall, 0.5-1.9 long)
   pickup: { baseRadius: 1.5, growRadius: 2.6, growTime: 5, moveBonus: 0.8, moveSpeedRef: 7,
             intervalStill: 0.34, intervalMoving: 0.09, driftMult: 2.3, driftSpeed: 1.6,
             maxFlying: 30, flightTime: 0.8, arcHeight: 2.2, orbLerp: 12 },
@@ -115,8 +115,8 @@ const CONFIG = {
   build: { targetSecs: 24 },   // hold-still build time target; moving is ~2-3x faster
   weights: { shop: 0.5, home: 0.35, landmark: 0.15 },
   perf: { slowMs: 22, slowSecs: 3, fastMs: 12, fastSecs: 10, vsyncMs: 18.5, cpuMsOk: 9, graceSecs: 3, cooldownSecs: 25 },
-  lights: { hemi: 1.7, sun: 2.4, amb: 1.7 },
-  fogDensity: 0.013,
+  lights: { hemi: 1.5, sun: 2.5, amb: 1.5 },
+  fogDensity: 0.0042,
   quality: {
     LOW:    { label: 'Low',    scale: 0.75, shadow: 0,    particles: 80,  garden: 0.5, point: false, standard: false, bevel: false },
     MEDIUM: { label: 'Medium', scale: 1,    shadow: 512,  particles: 200, garden: 1,   point: true,  standard: true,  bevel: true },
@@ -685,6 +685,28 @@ function spansMinus(a, b, gaps) {
 }
 function slot(L, o) { o.i = L.slots.length; L.slots.push(Object.assign({ rx: 0, ry: 0, rz: 0, ph: 0, j: L.rng() }, o)); }
 const PRIM = {};
+function planRows(p, L, cutsFrom) {
+  const req = new Set([0, p.courses]);
+  cutsFrom.forEach(g => { if (g[0] > 0 && g[0] < p.courses) req.add(g[0]); if (g[1] + 1 < p.courses) req.add(g[1] + 1); });
+  (p.bands || []).forEach(b => { if (b < p.courses) { req.add(b); req.add(Math.min(p.courses, b + 2)); } });
+  if (p.base) req.add(Math.min(2, p.courses));
+  const cuts = Array.from(req).sort((a, b) => a - b), rows = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    let c = cuts[i]; const end = cuts[i + 1];
+    while (c < end) { const rem = end - c, hs = [1, 2, 2, 3, 3, 2].filter(h => h <= rem), h = hs[Math.floor(L.rng() * hs.length)]; rows.push([c, c + h - 1, false]); c += h; }
+  }
+  if (p.crenel) rows.push([p.courses, p.courses, true]);
+  return rows;
+}
+function randParts(len, L) {
+  const out = []; let u = 0;
+  while (len - u > 0.001) {
+    let l = L.rng() < 0.18 ? 0.5 + L.rng() * 0.25 : 0.85 + L.rng() * 1.05;
+    if (len - u - l < 0.6) l = len - u;
+    out.push([u, u + l]); u += l;
+  }
+  return out;
+}
 PRIM.walls = function (p, L, idx) {
   const B = CONFIG.brick, H = B.H, T = B.T, at = p.at || [0, 0], w = p.w, d = p.d;
   const y0 = p.on != null ? L.meta[p.on].top : (p.y || 0);
@@ -701,17 +723,15 @@ PRIM.walls = function (p, L, idx) {
     L[isDoor ? 'doors' : 'windows'].push({ x: fb ? uc : s.fixed, z: fb ? s.fixed : uc, y: y0 + c0 * H + (isDoor ? 0 : o.h * H / 2), ry: ryOf[side], w: o.w, h: o.h * H });
   };
   (p.doors || []).forEach(o => open(o, true)); (p.windows || []).forEach(o => open(o, false));
-  const RH = B.rowH || 1, sides = ['front', 'back', 'left', 'right'], rows = [];
-  for (let c = 0; c < p.courses; c += RH) rows.push([c, Math.min(c + RH, p.courses) - 1, false]);
-  if (p.crenel) rows.push([p.courses, p.courses, true]);
-  rows.forEach((row, ri) => {
+  const sides = ['front', 'back', 'left', 'right'];
+  const allGaps = []; sides.forEach(sd => gaps[sd].forEach(g => allGaps.push([g.c0, g.c1])));
+  const rows = planRows(p, L, allGaps);
+  rows.forEach(row => {
     const c0 = row[0], c1 = row[1], isCren = row[2], hh = (c1 - c0 + 1) * H;
-    sides.forEach((side, si) => {
-      const s = info[side], n = Math.max(1, Math.round(s.len / B.L)), bw = s.len / n, st = s.c - s.len / 2, parity = (ri + si) & 1;
-      let segs = [];
-      if (parity === 0 || n === 1) for (let i = 0; i < n; i++) segs.push([st + i * bw, st + (i + 1) * bw]);
-      else { segs.push([st, st + bw / 2]); for (let i = 1; i < n; i++) segs.push([st + (i - 0.5) * bw, st + (i + 0.5) * bw]); segs.push([st + s.len - bw / 2, st + s.len]); }
-      if (isCren) segs = segs.filter((_, k) => k % 2 === 0);
+    sides.forEach(side => {
+      const s = info[side], st = s.c - s.len / 2;
+      let segs = isCren ? (() => { const n = Math.max(1, Math.round(s.len / 1.0)), bw = s.len / n, o = []; for (let i = 0; i < n; i += 2) o.push([st + i * bw, st + (i + 1) * bw]); return o; })()
+        : randParts(s.len, L).map(q => [st + q[0], st + q[1]]);
       const gl = gaps[side].filter(g => c1 >= g.c0 && c0 <= g.c1).map(g => [g.u0, g.u1]);
       const band = p.bands && p.bands.some(b => b >= c0 && b <= c1);
       const col = (c0 === 0 && p.base) ? 'stone' : (band ? 'trim' : (p.c || 'wall'));
@@ -735,16 +755,17 @@ PRIM.ring = function (p, L, idx) {
     L[isDoor ? 'doors' : 'windows'].push({ x: at[0] + Math.cos(ang) * r, z: at[1] + Math.sin(ang) * r, y: y0 + c0 * H + (isDoor ? 0 : o.h * H / 2), ry: Math.atan2(Math.cos(ang), Math.sin(ang)), w: o.w, h: o.h * H });
   };
   (p.doors || []).forEach(o => open(o, true)); (p.windows || []).forEach(o => open(o, false));
-  const RH = B.rowH || 1, rows = [];
-  for (let c = 0; c < p.courses; c += RH) rows.push([c, Math.min(c + RH, p.courses) - 1, false]);
-  if (p.crenel) rows.push([p.courses, p.courses, true]);
-  rows.forEach((row, ri) => {
+  const rows = planRows(p, L, gaps.map(g => [g.c0, g.c1]));
+  rows.forEach(row => {
     const c0 = row[0], c1 = row[1], isCren = row[2], hh = (c1 - c0 + 1) * H, band = p.bands && p.bands.some(b => b >= c0 && b <= c1);
-    for (let i = 0; i < n; i++) {
+    const k = isCren ? n : Math.max(5, Math.round(TAU * r / 1.25)), ws = []; let sum = 0;
+    for (let i = 0; i < k; i++) { const w = isCren ? 1 : (L.rng() < 0.18 ? 0.5 : 0.8 + L.rng() * 0.9); ws.push(w); sum += w; }
+    let a0 = L.rng() * TAU;
+    for (let i = 0; i < k; i++) {
+      const len = ws[i] / sum * TAU, th = a0 + len / 2; a0 += len;
       if (isCren && i % 2) continue;
-      const th = (i + (ri & 1 ? 0.5 : 0)) * da;
       const gl = gaps.filter(g => c1 >= g.c0 && c0 <= g.c1).map(g => { const rel = wrapAng(g.ang - th); return [rel - g.hw, rel + g.hw]; });
-      for (const sp of spansMinus(-da / 2, da / 2, gl)) {
+      for (const sp of spansMinus(-len / 2, len / 2, gl)) {
         const arc = (sp[1] - sp[0]) * r; if (arc < 0.14) continue;
         const tc = th + (sp[0] + sp[1]) / 2;
         slot(L, { x: at[0] + Math.cos(tc) * r, y: y0 + c0 * H + hh / 2, z: at[1] + Math.sin(tc) * r, sx: arc * 1.04, sy: hh - 0.015, sz: T, ry: -tc - Math.PI / 2, c: (c0 === 0 && p.base) ? 'stone' : (band ? 'trim' : 'wall') });
@@ -1128,7 +1149,7 @@ function updateCamera(dt) {
   const d = cam.distBase * cam.zoom, cp = Math.cos(cam.pitch);
   camera.position.set(cam.target.x + Math.sin(cam.az) * cp * d, cam.target.y + Math.sin(cam.pitch) * d, cam.target.z + Math.cos(cam.az) * cp * d);
   camera.lookAt(cam.target); camera.updateMatrixWorld();
-  scene.fog.density = CONFIG.fogDensity * Math.min(1, 55 / Math.max(d, 1));
+  scene.fog.density = CONFIG.fogDensity * Math.min(1, 40 / Math.max(d, 1));
   hills.position.x = cam.target.x * 0.92; hills.position.z = cam.target.z * 0.92;
   // sun follows the active site; shadow only near it
   if (Q.shadow && site) { sun.position.set(site.x, 0, site.z).addScaledVector(SUN_DIR, 30); sun.target.position.set(site.x, 0, site.z); sun.target.updateMatrixWorld(); }
@@ -1161,8 +1182,8 @@ function randBrickColor(out) {
 function spawnR() { return clamp(cam.fitR * 0.92, (site ? site.R : 3) + 1.8, 8.5); }
 function spawnBrick(pop) {
   if (!site) return;
-  const a = Math.random() * TAU, r = lerp(site.R + 0.9, spawnR(), Math.sqrt(Math.random())), k = 0.85 + Math.random() * 0.3, B = CONFIG.brick;
-  const b = { st: 'idle', x: site.x + Math.cos(a) * r, y: 0, z: site.z + Math.sin(a) * r, yaw: Math.random() * TAU, w: B.L * k, h: B.H * (B.rowH || 1) * k, d: B.T * k, col: randBrickColor(new C3()), lift: 0, hot: 0, pop: pop ? 0 : 1, out: 0 };
+  const a = Math.random() * TAU, r = lerp(site.R + 0.9, spawnR(), Math.sqrt(Math.random())), k = 1, B = CONFIG.brick;
+  const b = { st: 'idle', x: site.x + Math.cos(a) * r, y: 0, z: site.z + Math.sin(a) * r, yaw: Math.random() * TAU, w: B.L * (0.55 + Math.random() * 1.1), h: B.H * (1 + Math.floor(Math.random() * 3)), d: B.T * (0.8 + Math.random() * 0.45), col: randBrickColor(new C3()), lift: 0, hot: 0, pop: pop ? 0 : 1, out: 0 };
   loose.push(b); if (pop) sparkle(b.x, 0.4, b.z, 3, 0.8);
 }
 function refreshLooseForNewSite() {
