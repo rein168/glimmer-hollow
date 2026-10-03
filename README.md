@@ -5,6 +5,7 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 ## How to play
 - **Press and hold** anywhere: a glowing orb follows your finger (or mouse). Loose bricks inside its pickup ring glow, lift and fly to the build site.
 - **Move** to sweep up bricks faster. **Hold still** and the ring slowly grows while bricks drift toward the orb, so holding alone always makes progress.
+- **🧭 Explore** (top right): one finger drags the town around so you can look at it; tap 🧭 again to fly back to the build site.
 - **Two fingers**: drag to orbit, pinch to zoom. One finger never moves the camera. On desktop: left-drag builds, right-drag orbits, wheel zooms.
 - Finished buildings get a shop name / family name / landmark name. Tap a building (or pick it in **Town List**) to show its label, then tap the label to rename or 🎲 re-roll.
 - **Photo**: frame a building or the whole town, toggle the caption badge, press the shutter. Share sheet where supported, otherwise a download.
@@ -28,7 +29,7 @@ chapel: { role: 'landmark', label: 'Chapel', nouns: ['Chapel', 'Hall'], parts: [
 ] }
 ```
 - `role`: `home`, `shop` or `landmark` (roles are weighted in `CONFIG.weights`).
-- Part kinds: `walls`, `ring`, `gable`, `cone`, `stack`, `awning`, `sign`, `flag`. `on` is the index of an earlier part to sit on. `at: [x, z]` offsets a part; `crenel`, `bands`, `base`, `stripes` are optional styling flags.
+- Part kinds: `walls`, `ring`, `gable`, `cone`, `stack`, `awning`, `sign`, `flag`, `boxes` (free-form decorative boxes, e.g. windmill blades). `on` is the index of an earlier part to sit on. `at: [x, z]` offsets a part; `crenel`, `bands`, `base`, `stripes` are optional styling flags.
 - Shop types need a `sign` part to show the name board. Landmarks need `nouns` for the name generator.
 - Pedestal size, scaffold, scaffolding and garden spacing are derived automatically from the layout.
 
