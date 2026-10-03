@@ -113,7 +113,7 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
-const VERSION = '0.12.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
+const VERSION = '0.13.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
@@ -537,7 +537,7 @@ function makeGroundTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), rnd = mulberry32(5);
   g.fillStyle = '#fff'; g.fillRect(0, 0, 128, 128);
   for (let i = 0; i < 60; i++) { g.fillStyle = 'rgba(' + (rnd() < 0.5 ? '210,235,190' : '255,255,235') + ',' + (0.25 + rnd() * 0.3) + ')'; g.beginPath(); g.arc(rnd() * 128, rnd() * 128, 4 + rnd() * 10, 0, TAU); g.fill(); }
-  const t = canvasTex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(90, 90); return t;
+  const t = canvasTex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(240, 240); return t;
 }
 function makeSoftTexture(dark) {
   const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -560,7 +560,7 @@ const blobTex = makeSoftTexture(true), glowTex = makeGlowTexture();
 scene = new THREE.Scene();
 scene.background = PC.sky.clone();
 scene.fog = new THREE.FogExp2(PC.sky.clone(), CONFIG.fogDensity);
-camera = new THREE.PerspectiveCamera(CONFIG.fov, 1, 0.5, 700);
+camera = new THREE.PerspectiveCamera(CONFIG.fov, 1, 0.5, 3000);
 hemi = new THREE.HemisphereLight(PC.hemiSky, PC.hemiGround, CONFIG.lights.hemi);
 amb = new THREE.AmbientLight(0xfff0dc, CONFIG.lights.amb);
 sun = new THREE.DirectionalLight(PC.sun, CONFIG.lights.sun);
@@ -573,7 +573,7 @@ sun.shadow.camera.left = -14; sun.shadow.camera.right = 14; sun.shadow.camera.to
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 80; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.03;
 
 const world = new THREE.Group(); scene.add(world);
-const ground = setLit(new THREE.Mesh(new THREE.CircleGeometry(700, 48), litMat('ground')), 'ground');
+const ground = setLit(new THREE.Mesh(new THREE.CircleGeometry(1900, 48), litMat('ground')), 'ground');
 ground.rotation.x = -Math.PI / 2; ground.userData.recv = true; world.add(ground);
 const plaza = setLit(new THREE.Mesh(new THREE.CircleGeometry(9.6, 56), litMat('plaza')), 'plaza');
 plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.012; plaza.userData.recv = true; world.add(plaza);
@@ -922,7 +922,10 @@ function genName(b) {
   }
   return fallback.slice(0, 20) + ' ' + (S.buildings.length + 1);
 }
-function townNameGen() { return pick(Math.random, CONFIG.names.towns); }
+function townNameGen() {
+  const used = (typeof INDEX !== 'undefined' && INDEX.list ? INDEX.list : []).map(t => t.name), free = CONFIG.names.towns.filter(n => used.indexOf(n) < 0);
+  return free.length ? pick(Math.random, free) : pick(Math.random, CONFIG.names.towns) + ' ' + (used.length + 1);
+}
 
 /* ============================================================
    CONSTRUCTION: site (pedestal + scaffold + instanced bricks)
@@ -962,6 +965,7 @@ function pickPos(R) {
     const a0 = bs[Math.floor(Math.random() * bs.length)], ang = Math.random() * TAU, dist = a0.R + R + gap + Math.random() * 4.5 * (1 + k / 90);
     const x = a0.x + Math.cos(ang) * dist, z = a0.z + Math.sin(ang) * dist;
     if (plazaDist(x, z) < R + 1.0) continue;
+    if (Math.hypot(x, z) + R > 58) continue;   // keep clear of the region highways
     if (bs.some(o => Math.hypot(o.x - x, o.z - z) < o.R + R + gap)) continue;
     if (terrainBlocked(x, z, R + 1.5) || terrainBlocked((x + a0.x) / 2, (z + a0.z) / 2, 1)) continue;
     if (segs.some(g => distSeg(x, z, g[0], g[1], g[2], g[3]) < R + 1.0)) continue;
@@ -1238,7 +1242,7 @@ const cam = { target: new V3(), distBase: 30, zoom: 1, zoomT: 1, az: 0.35, azT: 
   glide: null, fitR: CONFIG.fitRadius, fitH: 4, away: false, zMin: CONFIG.zoomMin, zMax: CONFIG.zoomMax };
 function fitDist(R, H) {
   const t = Math.tan(CONFIG.fov * Math.PI / 360);
-  return clamp(Math.max(R / (t * camera.aspect), R * 0.78 / t) + H * 0.35, 12, 500);
+  return clamp(Math.max(R / (t * camera.aspect), R * 0.78 / t) + H * 0.35, 12, 1800);
 }
 function camFocus(x, y, z, R, H, dur) {
   cam.fitR = R; cam.fitH = H;
@@ -1256,8 +1260,9 @@ function updateCamera(dt) {
   const d = cam.distBase * cam.zoom, cp = Math.cos(cam.pitch);
   camera.position.set(cam.target.x + Math.sin(cam.az) * cp * d, cam.target.y + Math.sin(cam.pitch) * d, cam.target.z + Math.cos(cam.az) * cp * d);
   camera.lookAt(cam.target); camera.updateMatrixWorld();
+  { const nr = clamp(d * 0.02, 0.5, 12); if (Math.abs(nr - camera.near) > 0.05) { camera.near = nr; camera.updateProjectionMatrix(); } }
   scene.fog.density = CONFIG.fogDensity * Math.min(1, 40 / Math.max(d, 1));
-  hills.position.x = cam.target.x * 0.92; hills.position.z = cam.target.z * 0.92;
+  hills.visible = d < 260; hills.position.x = cam.target.x * 0.92; hills.position.z = cam.target.z * 0.92;
   // sun follows the active site; shadow only near it
   if (Q.shadow && site) { sun.position.set(site.x, 0, site.z).addScaledVector(SUN_DIR, 30); sun.target.position.set(site.x, 0, site.z); sun.target.updateMatrixWorld(); }
 }
@@ -1409,7 +1414,7 @@ function updateOrb(dt, t) {
    TERRAIN — what the town sits beside: river | hill | neighbor town | road
    ============================================================ */
 const TERR = { kind: 'none', seed: 1, pts: [], width: 0, hill: null, nb: null, forest: null, farm: null, bridge: null, mesh: null, fake: [], links: [], plaza: null, conn: [], connLinks: [] };
-const TERR_KINDS = ['river', 'hill', 'neighbor', 'road', 'forest', 'farmland'];
+const TERR_KINDS = ['river', 'hill', 'road', 'forest', 'farmland'];
 const TERR_LABEL = { river: 'a river', hill: 'a hill', neighbor: 'another town', road: 'a road', forest: 'a forest', farmland: 'farmland', none: 'open meadow' };
 function plazaParams(seed) {
   const r = mulberry32((seed | 0) + 11), square = r() < 0.5, size = square ? 7.5 + r() * 2 : 8.5 + r() * 2.5, rot = r() * Math.PI, ang = r() * TAU, dist = r() * 0.42 * size;
@@ -2135,6 +2140,7 @@ function handleTap(x, y) {
     _sph.center.set(b.rt.x, b.rt.h / 2, b.rt.z); _sph.radius = Math.max(b.rt.R * 0.7, b.rt.h * 0.6);
     if (_ray.ray.intersectSphere(_sph, _v)) { const d = _v.distanceTo(camera.position); if (d < bd) { bd = d; best = b; } }
   }
+  if (!best) for (const c of TERR.conn) { _sph.center.set(c.x, 6, c.z); _sph.radius = Math.max(16, c.r * 0.7); if (_ray.ray.intersectSphere(_sph, _v)) { visitPrompt(c); return; } }
   S.selected = best ? best.id : null; updateLabelText();
 }
 
@@ -2144,6 +2150,7 @@ function handleTap(x, y) {
 let photoSaved = null;
 function photoFocus() {
   cam.zoomT = 1; cam.away = true;
+  if (S.photoSub === 'region' && TERR.conn.length) { camFocusRegion(1.2); return; }
   if (S.photoSub === 'town' && S.buildings.length > 1) {
     let sx = 0, sz = 0; S.buildings.forEach(b => { sx += b.rt.x; sz += b.rt.z; }); sx /= S.buildings.length; sz /= S.buildings.length;
     let r = 0; S.buildings.forEach(b => { r = Math.max(r, Math.hypot(b.rt.x - sx, b.rt.z - sz) + b.rt.R); });
@@ -2196,7 +2203,7 @@ function drawCaption(g, W, H, town, bname) {
 async function finishShot(blob, bld) {
   S.shooting = false; if (!blob) return;
   const d = new Date(), z = n => ('0' + n).slice(-2), ts = d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
-  const name = slug(S.townName) + '-' + (bld ? slug(bld.name) : 'town') + '-' + ts + '.png';
+  const name = slug(S.townName) + '-' + (bld ? slug(bld.name) : S.photoSub === 'region' ? 'region' : 'town') + '-' + ts + '.png';
   let file = null; try { file = new File([blob], name, { type: 'image/png' }); } catch (e) {}
   if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title: S.townName }); return; }
@@ -2244,7 +2251,7 @@ const ICONS = {
 };
 const ic = (n, st) => '<i class="ic"' + (st ? ' style="' + st + '"' : '') + '>' + ICONS[n] + '</i>';
 document.querySelectorAll('[data-i]').forEach(el => { el.innerHTML = ICONS[el.dataset.i]; });
-function setPbMode() { $('pbMode').innerHTML = ic(S.photoSub === 'building' ? 'home' : 'town') + (S.photoSub === 'building' ? 'Building' : 'Town'); }
+function setPbMode() { $('pbMode').innerHTML = ic(S.photoSub === 'building' ? 'home' : 'town') + (S.photoSub === 'building' ? 'Building' : S.photoSub === 'region' ? 'Region' : 'Town'); }
 function setPbCap() { $('pbCap').innerHTML = ic('tag') + 'Caption: ' + (S.settings.caption ? 'on' : 'off'); }
 
 /* ============================================================
@@ -2302,7 +2309,7 @@ $('btnExplore').onclick = () => setExplore(!S.explore);
 function setPaused(p) { S.paused = p; $('paused').style.display = p ? 'flex' : 'none'; if (p) hold.active = false; Audio.sync(); }
 $('btnPause').onclick = () => setPaused(true); $('btnResume').onclick = () => setPaused(false);
 $('btnPhoto').onclick = enterPhoto; $('dnTowns').onclick = () => openTowns(); $('dnNew').onclick = () => openNewTownSheet(); $('pbExit').onclick = exitPhoto; $('pbShutter').onclick = shutter;
-$('pbMode').onclick = () => { S.photoSub = S.photoSub === 'building' ? 'town' : 'building'; setPbMode(); photoFocus(); };
+$('pbMode').onclick = () => { const order = TERR.conn.length ? ['building', 'town', 'region'] : ['building', 'town']; S.photoSub = order[(order.indexOf(S.photoSub) + 1) % order.length]; setPbMode(); photoFocus(); };
 $('pbCap').onclick = () => { S.settings.caption = !S.settings.caption; setPbCap(); saveSoon(); };
 const ROLE_ICON = { home: ic('home'), shop: ic('shop'), landmark: ic('castle') };
 $('btnList').onclick = () => {
@@ -2372,6 +2379,20 @@ let INDEX = { v: 1, current: null, list: [] };
 function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); }
 function writeIndex() { try { localStorage.setItem(KEY_INDEX, JSON.stringify(INDEX)); } catch (e) {} }
 function newTownId() { return 't' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); }
+function pickRegionPos(exclId) {   // where a town sits in the shared region map
+  const ex = INDEX.list.filter(t => t.region && t.id !== exclId).map(t => t.region);
+  if (!ex.length) return [0, 0];
+  let cx = 0, cz = 0; ex.forEach(q => { cx += q[0]; cz += q[1]; }); cx /= ex.length; cz /= ex.length;
+  let best = null, bs = 1e9;
+  for (let k = 0; k < 160; k++) {
+    const a = ex[Math.floor(Math.random() * ex.length)], ang = Math.random() * TAU, dd = 190 + Math.random() * 45, x = a[0] + Math.cos(ang) * dd, z = a[1] + Math.sin(ang) * dd;
+    if (ex.some(q => Math.hypot(q[0] - x, q[1] - z) < 175)) continue;
+    const sc = Math.hypot(x - cx, z - cz) + Math.random() * 40; if (sc < bs) { bs = sc; best = [x, z]; }
+  }
+  if (!best) { const a = Math.random() * TAU; best = [cx + Math.cos(a) * 600, cz + Math.sin(a) * 600]; }
+  return best;
+}
+function normalizeRegions() { INDEX.list.forEach(t => { if (!t.region) t.region = pickRegionPos(t.id); }); writeIndex(); }
 function metaOf(d, id) { return { id, name: String(d.townName || 'Town'), count: d.buildings.length, cap: capFor(d.setting, d.buildings.length), kind: (d.setting && d.setting.kind) || 'none', updated: Date.now() }; }
 function townData() {
   return { schemaVersion: CONFIG.schemaVersion, townName: S.townName, theme: S.themeIdx, settings: S.settings, nextId: S.nextId, lotCount: S.lotCount, history: S.history, setting: S.setting, connected: S.connected,
@@ -2381,7 +2402,7 @@ function saveNow() {
   clearTimeout(saveTimer); if (!S.townId) return;
   try {
     const d = townData(); localStorage.setItem(keyTown(S.townId), JSON.stringify(d));
-    const m = metaOf(d, S.townId), i = INDEX.list.findIndex(t => t.id === S.townId); if (i >= 0) INDEX.list[i] = m; else INDEX.list.push(m);
+    const m = metaOf(d, S.townId), i = INDEX.list.findIndex(t => t.id === S.townId); m.region = S.region; if (i >= 0) INDEX.list[i] = m; else INDEX.list.push(m);
     INDEX.current = S.townId; writeIndex();
   } catch (e) {}
 }
@@ -2432,6 +2453,7 @@ function startTown(d, kind, id, keepSettings) {
   if (d) applySave(d, keepSettings);
   else { S.buildings = []; S.history = []; S.nextId = 1; S.lotCount = 0; S.cur = null; S.connected = []; S.townName = townNameGen(); S.setting = newSetting(kind); }
   S.townId = id || newTownId();
+  { const meta = INDEX.list.find(t => t.id === S.townId); S.region = meta && meta.region ? meta.region : pickRegionPos(S.townId); }
   terrainInit(S.setting.kind, S.setting.seed); setTheme(S.themeIdx, true);
   S.buildings.forEach(b => { if (!b.name) b.name = genName(b); buildBuildingObject(b); });
   buildTerrain(); rebuildLandscape();
@@ -2467,62 +2489,88 @@ function deleteTown(id) {
   } else { S.connected = S.connected.filter(c => c.id !== id); buildTerrain(); rebuildLandscape(); }
   INDEX.current = S.townId; writeIndex(); saveNow();
 }
-function curExtent() {
-  let e = TERR.plaza ? TERR.plaza.size * 1.3 : 12;
-  S.buildings.forEach(b => { const q = lotPos(b.lot); e = Math.max(e, Math.hypot(q.x, q.z) + layoutFor(b).R); });
-  if (site) e = Math.max(e, Math.hypot(site.x, site.z) + site.R);
-  return e;
-}
 function townExtent(d) { let e = plazaParams(d.setting.seed).size * 1.3; d.buildings.forEach(b => { e = Math.max(e, Math.hypot(b.lot[0], b.lot[1]) + layoutFor(b).R); }); return e; }
-function connectTown(otherId) {
-  const dB = readTown(otherId); if (!dB) { toast('Could not open that town'); return; }
-  if (S.connected.some(c => c.id === otherId)) return;
-  if (S.connected.length >= 2 || dB.connected.length >= 2) { toast('A town can connect to 2 others'); return; }
-  const extB = townExtent(dB), dist = Math.max(60, curExtent() + extB + 26), tries = []; for (let i = 0; i < 16; i++) tries.push(Math.random() * TAU);
-  let ang = null; for (const a of tries) if (!terrainBlocked(Math.cos(a) * dist, Math.sin(a) * dist, extB + 4) && S.connected.every(c => Math.abs(wrapAng(a - c.ang)) > 1.0)) { ang = a; break; }
-  if (ang === null) ang = tries[0];
-  const cx = Math.cos(ang) * dist, cz = Math.sin(ang) * dist; let from = null, bd = 1e9;
-  S.buildings.forEach(b => { const q = lotPos(b.lot), dd = Math.hypot(q.x - cx, q.z - cz); if (dd < bd) { bd = dd; from = b.id; } });
-  S.connected.push({ id: otherId, ang, d: dist, from });
-  const angB = wrapAng(ang + Math.PI), bx = Math.cos(angB) * dist, bz = Math.sin(angB) * dist; let fromB = null; bd = 1e9;
-  dB.buildings.forEach(b => { const dd = Math.hypot(b.lot[0] - bx, b.lot[1] - bz); if (dd < bd) { bd = dd; fromB = b.id; } });
-  dB.connected.push({ id: S.townId, ang: angB, d: dist, from: fromB });
-  try { localStorage.setItem(keyTown(otherId), JSON.stringify(dB)); } catch (e) {}
-  saveNow(); buildTerrain(); rebuildLandscape(); toast('Connected to ' + dB.townName + ' - use Explore to follow the road');
-}
-function disconnectTown(otherId) {
-  S.connected = S.connected.filter(c => c.id !== otherId);
-  const dB = readTown(otherId); if (dB) { dB.connected = dB.connected.filter(c => c.id !== S.townId); try { localStorage.setItem(keyTown(otherId), JSON.stringify(dB)); } catch (e) {} }
-  saveNow(); buildTerrain(); rebuildLandscape(); toast('Towns disconnected');
-}
 function clearConnected() {
   TERR.conn.forEach(c => { scene.remove(c.mesh); c.mesh.geometry.dispose(); if (c.sprite) { scene.remove(c.sprite); c.sprite.material.map.dispose(); c.sprite.material.dispose(); } });
+  if (TERR.regMesh) { scene.remove(TERR.regMesh); TERR.regMesh.geometry.dispose(); TERR.regMesh = null; }
+  if (TERR.selfSprite) { scene.remove(TERR.selfSprite); TERR.selfSprite.material.map.dispose(); TERR.selfSprite.material.dispose(); TERR.selfSprite = null; }
   TERR.conn = []; TERR.connLinks = [];
 }
-function buildConnected() {   // connected saved towns appear as neighbours (one merged, light mesh each) joined by a road
+function nameSprite(text, y) {
+  const cvs = document.createElement('canvas'); cvs.width = 512; cvs.height = 128; const g2 = cvs.getContext('2d');
+  rrect(g2, 6, 6, 500, 116, 50); g2.fillStyle = 'rgba(255,246,224,.95)'; g2.fill(); g2.lineWidth = 8; g2.strokeStyle = '#e8b84b'; g2.stroke();
+  g2.fillStyle = '#6a4d2a'; g2.textAlign = 'center'; g2.textBaseline = 'middle'; let fs = 56; do { g2.font = '800 ' + fs + 'px ui-rounded,"Trebuchet MS",system-ui,sans-serif'; fs -= 4; } while (g2.measureText(text).width > 440 && fs > 16);
+  g2.fillText(text, 256, 66);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(cvs), depthTest: false, transparent: true, fog: false })); sp.scale.set(15, 3.75, 1); sp.renderOrder = 20; sp.position.y = y; scene.add(sp); return sp;
+}
+const strHash = str => { let h = 7; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return (Math.abs(h) % 1000) / 1000; };
+function regionEdges() {   // roads between towns: minimum spanning tree + any pair that is close
+  const L = INDEX.list.filter(t => t.region); if (!L.some(t => t.id === S.townId)) L.push({ id: S.townId, region: S.region }); if (L.length < 2) return [];
+  const inT = [L[0]], rest = L.slice(1), out = [], key = (a, b) => a.id < b.id ? a.id + b.id : b.id + a.id, seen = {};
+  while (rest.length) {
+    let bi = -1, bj = -1, bd = 1e9;
+    inT.forEach((a, i) => rest.forEach((c, j) => { const dd = Math.hypot(a.region[0] - c.region[0], a.region[1] - c.region[1]); if (dd < bd) { bd = dd; bi = i; bj = j; } }));
+    out.push([inT[bi], rest[bj]]); seen[key(inT[bi], rest[bj])] = 1; inT.push(rest[bj]); rest.splice(bj, 1);
+  }
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) if (!seen[key(L[i], L[j])] && Math.hypot(L[i].region[0] - L[j].region[0], L[i].region[1] - L[j].region[1]) < 260) out.push([L[i], L[j]]);
+  return out;
+}
+function buildConnected() {   // every other saved town appears in the distance, joined by roads (shared region map)
   clearConnected();
-  for (const cn of S.connected) {
-    const d = readTown(cn.id); if (!d) continue;
-    const nx = Math.cos(cn.ang) * cn.d, nz = Math.sin(cn.ang) * cn.d, gb = new GeoBuilder(), pp = plazaParams(d.setting.seed), bg = GEO.brickPlain;
-    if (pp.shape === 'round') gb.add(mk(new THREE.CylinderGeometry(pp.size, pp.size, 0.04, 32), '#ffffff'), _m.makeTranslation(nx, 0.02, nz), new C3('#d9cfb8'));
-    else gb.add(mk(new THREE.BoxGeometry(pp.size * 2, 0.04, pp.size * 2), '#ffffff'), _m.makeRotationY(pp.rot).setPosition(nx, 0.02, nz), new C3('#d9cfb8'));
+  const me = { region: S.region }; if (!S.region || !INDEX.list.some(t => t.id !== S.townId && t.region)) return;
+  const towns = {}, boxG = mk(new THREE.BoxGeometry(1, 1, 1), '#ffffff'), cylG = mk(new THREE.CylinderGeometry(1, 1, 1, 12), '#ffffff'), pyrG = mk(new THREE.CylinderGeometry(0, 1, 1, 4), '#ffffff'), coneG = mk(new THREE.CylinderGeometry(0, 1, 1, 10), '#ffffff');
+  const c2 = new C3(), M = new M4(), M1 = new M4(), S1 = new V3(), Pp = new V3(), Qq = new Q4();
+  INDEX.list.forEach(t => {
+    if (t.id === S.townId || !t.region) return; const d = readTown(t.id); if (!d) return;
+    const nx = t.region[0] - me.region[0], nz = t.region[1] - me.region[1], pp = plazaParams(d.setting.seed), gb = new GeoBuilder();
+    if (pp.shape === 'round') gb.add(cylG, M.compose(Pp.set(nx, 0.02, nz), Qq.identity(), S1.set(pp.size, 0.04, pp.size)), c2.set('#d9cfb8'));
+    else gb.add(boxG, M.compose(Pp.set(nx, 0.02, nz), Qq.setFromAxisAngle(Y_AXIS, pp.rot), S1.set(pp.size * 2, 0.04, pp.size * 2)), c2.set('#d9cfb8'));
     d.buildings.forEach(b => {
-      const L = layoutFor(b), yaw = Math.atan2(-b.lot[0], -b.lot[1]) + (((b.seed >>> 3) % 1000) / 1000 - 0.5) * 0.5;
-      const M0 = new M4().compose(new V3(nx + b.lot[0], 0, nz + b.lot[1]), new Q4().setFromAxisAngle(Y_AXIS, yaw), new V3(1, 1, 1)).multiply(new M4().makeTranslation(0, PED_H, 0));
-      for (const sl of L.slots) { if (sl.flag) continue; slotMatrix(sl, _m); _m.premultiply(M0); gb.add(bg, _m, resolveColor(b, sl.c, sl.j, _c)); }
-      gb.add(mk(new THREE.CylinderGeometry(L.R * 0.88, L.R * 0.93, PED_H, 20), '#ffffff'), _m.makeTranslation(nx + b.lot[0], PED_H / 2, nz + b.lot[1]), PC.stone);
+      const L = layoutFor(b), ring = L.cfg.parts[0].k === 'ring', wx = nx + b.lot[0], wz = nz + b.lot[1], yaw = Math.atan2(-b.lot[0], -b.lot[1]), wallH = L.wallTop + PED_H, roofH = Math.max(0.6, L.height - L.wallTop);
+      gb.add(cylG, M.compose(Pp.set(wx, PED_H / 2, wz), Qq.identity(), S1.set(L.R * 0.9, PED_H, L.R * 0.9)), PC.stone);
+      Qq.setFromAxisAngle(Y_AXIS, yaw);
+      if (ring) { gb.add(cylG, M.compose(Pp.set(wx, wallH / 2 + PED_H / 2, wz), Qq, S1.set(L.hx * 0.95, wallH, L.hx * 0.95)), resolveColor(b, 'wall', 0.5, c2)); gb.add(coneG, M.compose(Pp.set(wx, wallH + roofH / 2, wz), Qq, S1.set(L.hx * 1.25, roofH, L.hx * 1.25)), resolveColor(b, 'roof', 0.5, c2)); }
+      else {
+        gb.add(boxG, M.compose(Pp.set(wx, wallH / 2 + PED_H / 2, wz), Qq, S1.set(L.hx * 2, wallH, L.hz * 2)), resolveColor(b, 'wall', 0.5, c2));
+        M1.makeRotationY(Math.PI / 4); gb.add(pyrG, M.compose(Pp.set(wx, wallH + roofH / 2, wz), Qq, S1.set(L.hx * 1.45, roofH, L.hz * 1.45)).multiply(M1), resolveColor(b, 'roof', 0.5, c2));
+      }
     });
     const mesh = new THREE.Mesh(gb.build(), litMat('vc')); mesh.userData.lk = 'vc'; shadowFlags(mesh, false, true); scene.add(mesh);
-    const cvs = document.createElement('canvas'); cvs.width = 512; cvs.height = 128; const g2 = cvs.getContext('2d');
-    rrect(g2, 6, 6, 500, 116, 50); g2.fillStyle = 'rgba(255,246,224,.95)'; g2.fill(); g2.lineWidth = 8; g2.strokeStyle = '#e8b84b'; g2.stroke();
-    g2.fillStyle = '#6a4d2a'; g2.textAlign = 'center'; g2.textBaseline = 'middle'; let fs = 56; do { g2.font = '800 ' + fs + 'px ui-rounded,"Trebuchet MS",system-ui,sans-serif'; fs -= 4; } while (g2.measureText(d.townName).width > 440 && fs > 16);
-    g2.fillText(d.townName, 256, 66);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(cvs), depthTest: false, transparent: true, fog: false })); sp.scale.set(15, 3.75, 1); sp.position.set(nx, 13, nz); sp.renderOrder = 20; scene.add(sp);
-    const fb = S.buildings.find(o => o.id === cn.from), ap = fb ? lotPos(fb.lot) : { x: 0, z: 0 }, ar = fb ? layoutFor(fb).R : 4;
-    let best = null, bd = 1e9; d.buildings.forEach(b => { const dd = Math.hypot(nx + b.lot[0] - ap.x, nz + b.lot[1] - ap.z); if (dd < bd) { bd = dd; best = b; } });
-    if (best) TERR.connLinks.push({ a: [ap.x, ap.z], b: [nx + best.lot[0], nz + best.lot[1]], ar, br: layoutFor(best).R });
-    TERR.conn.push({ id: cn.id, x: nx, z: nz, r: townExtent(d) + 6, mesh, sprite: sp });
-  }
+    const sp = nameSprite(d.townName, 14); sp.position.set(nx, 14, nz);
+    const rec = { id: t.id, x: nx, z: nz, r: townExtent(d) + 6, mesh, sprite: sp, name: d.townName, d };
+    TERR.conn.push(rec); towns[t.id] = rec;
+  });
+  TERR.selfSprite = nameSprite(S.townName, 14); TERR.selfSprite.position.set(0, 14, 0);
+  const roadGeos = [], exitR = 62, col1 = new C3('#e8dfc8'), col2 = new C3('#c2b79f'), col3 = new C3('#b3a78e');
+  regionEdges().forEach(e => {
+    const A = e[0], B = e[1], pa = A.id === S.townId ? { x: 0, z: 0 } : towns[A.id], pb = B.id === S.townId ? { x: 0, z: 0 } : towns[B.id]; if (!pa || !pb) return;
+    const dx = pb.x - pa.x, dz = pb.z - pa.z, dist = Math.hypot(dx, dz), ux = dx / dist, uz = dz / dist, s0 = [pa.x + ux * exitR, pa.z + uz * exitR], s1 = [pb.x - ux * exitR, pb.z - uz * exitR];
+    const len = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]), bend = (strHash(A.id + B.id) - 0.5) * Math.min(36, dist * 0.18), n = Math.max(4, Math.round(len / 6)), pts = [];
+    for (let i = 0; i <= n; i++) { const t = i / n, off = bend * Math.sin(Math.PI * t); pts.push([s0[0] + (s1[0] - s0[0]) * t - uz * off, s0[1] + (s1[1] - s0[1]) * t + ux * off]); }
+    roadGeos.push(ribbonGeo(pts, 3.2, 0.02, col1, col1)); roadGeos.push(ribbonGeo(pts, 2.6, 0.035, col2, col3));
+    [[A, s0], [B, s1]].forEach(q => {   // a cobble street from each town's nearest building out to its highway
+      const T = q[0], ex = q[1]; let best = null, bd = 1e9;
+      if (T.id === S.townId) S.buildings.forEach(b => { const lp = lotPos(b.lot), dd = Math.hypot(lp.x - ex[0], lp.z - ex[1]); if (dd < bd) { bd = dd; best = { x: lp.x, z: lp.z, R: layoutFor(b).R }; } });
+      else { const tw = towns[T.id]; tw.d.buildings.forEach(b => { const wx = tw.x + b.lot[0], wz = tw.z + b.lot[1], dd = Math.hypot(wx - ex[0], wz - ex[1]); if (dd < bd) { bd = dd; best = { x: wx, z: wz, R: layoutFor(b).R }; } }); }
+      if (best) TERR.connLinks.push({ a: [best.x, best.z], b: [ex[0], ex[1]], ar: best.R, br: 0 });
+    });
+  });
+  if (roadGeos.length) { TERR.regMesh = new THREE.Mesh(mergeGeos(roadGeos), litMat('vc')); TERR.regMesh.userData.lk = 'vc'; shadowFlags(TERR.regMesh, false, true); TERR.regMesh.frustumCulled = false; scene.add(TERR.regMesh); }
+}
+function updateRegionLabels() {
+  if (!TERR.conn.length) return;
+  for (const c of TERR.conn) { const d = camera.position.distanceTo(c.sprite.position), sc = clamp(d * 0.06, 15, 110); c.sprite.scale.set(sc, sc / 4, 1); }
+  if (TERR.selfSprite) { const d = camera.position.distanceTo(TERR.selfSprite.position), sc = clamp(d * 0.06, 15, 110); TERR.selfSprite.visible = d > 150; TERR.selfSprite.scale.set(sc, sc / 4, 1); }
+}
+function camFocusRegion(dur) {
+  const pts = [[0, 0]].concat(TERR.conn.map(c => [c.x, c.z])); let sx = 0, sz = 0; pts.forEach(q => { sx += q[0]; sz += q[1]; }); sx /= pts.length; sz /= pts.length;
+  let r = 0; pts.forEach(q => { r = Math.max(r, Math.hypot(q[0] - sx, q[1] - sz) + 75); });
+  cam.zoomT = 1; cam.away = true; camFocus(sx, 1, sz, r, 10, dur);
+}
+function showRegion() { if (S.mode === 'play' && !S.explore) setExplore(true); camFocusRegion(1.6); }
+function visitPrompt(c) {
+  const t = INDEX.list.find(q => q.id === c.id); if (!t) return;
+  openModal('<h3>' + esc(c.name) + '</h3><div>' + t.count + '/' + t.cap + ' buildings · beside ' + esc(TERR_LABEL[t.kind] || 'open meadow') + '</div><div class="row"><button class="pill t-mint" id="vsGo">' + ic('play') + 'Visit</button><button class="pill" data-close="1">Not now</button></div>', el => { el.querySelector('#vsGo').onclick = () => { closeModal(); switchTown(c.id); }; });
 }
 
 /* ---------- My Towns / new town UI ---------- */
@@ -2531,22 +2579,22 @@ function openNewTownSheet() {
     openModal('<h3>That is a lot of towns!</h3><div>You can keep ' + CONFIG.maxTowns + ' towns. Delete one in My Towns first.</div><div class="row"><button class="pill t-sky" id="ntTowns">My Towns</button><button class="pill" data-close="1">Close</button></div>', el => { el.querySelector('#ntTowns').onclick = () => openTowns(); });
     return;
   }
-  const opts = [['river', 'A river'], ['hill', 'A hill'], ['forest', 'A forest'], ['farmland', 'Farmland'], ['road', 'A road'], ['neighbor', 'Another town'], ['random', 'Surprise me']];
-  openModal('<h3>Start a new town</h3><div>Your current town stays saved. Where should the new town sit?</div><div class="row">' + opts.map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" data-close="1">Cancel</button></div>',
+  const opts = [['river', 'A river'], ['hill', 'A hill'], ['forest', 'A forest'], ['farmland', 'Farmland'], ['road', 'A road'], ['random', 'Surprise me']];
+  openModal('<h3>Start a new town</h3><div>Your current town stays saved and joins your region. Where should the new town sit?</div><div class="row">' + opts.map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" data-close="1">Cancel</button></div>',
     el => el.querySelectorAll('[data-setting]').forEach(b => b.onclick = () => { closeModal(); newTown(b.dataset.setting); }));
 }
 function openTowns() {
   saveNow();
   const rows = INDEX.list.map(t => {
-    const isCur = t.id === S.townId, linked = S.connected.some(c => c.id === t.id);
-    return '<div class="trow' + (isCur ? ' cur' : '') + '"><div class="tt"><b>' + esc(t.name) + '</b>' + (isCur ? ' <span class="badge">you are here</span>' : '') + '<small>' + t.count + '/' + t.cap + ' buildings · beside ' + esc(TERR_LABEL[t.kind] || 'open meadow') + (linked ? ' · connected' : '') + '</small></div><div class="ta">'
-      + (isCur ? '' : '<button class="pill t-mint" data-open="' + t.id + '">' + ic('play') + 'Open</button><button class="pill ' + (linked ? 't-peach' : 't-sky') + '" data-link="' + t.id + '">' + ic('link') + (linked ? 'Unlink' : 'Connect') + '</button>')
+    const isCur = t.id === S.townId;
+    return '<div class="trow' + (isCur ? ' cur' : '') + '"><div class="tt"><b>' + esc(t.name) + '</b>' + (isCur ? ' <span class="badge">you are here</span>' : '') + '<small>' + t.count + '/' + t.cap + ' buildings · beside ' + esc(TERR_LABEL[t.kind] || 'open meadow') + '</small></div><div class="ta">'
+      + (isCur ? '' : '<button class="pill t-mint" data-open="' + t.id + '">' + ic('play') + 'Visit</button>')
       + '<button class="pill round t-peach" data-del="' + t.id + '" aria-label="Delete town">' + ic('trash') + '</button></div></div>';
   }).join('');
-  openModal('<h3>My Towns</h3><div class="scroll">' + rows + '</div><div class="row"><button class="pill t-mint" id="tnNew">' + ic('plus') + 'New town</button><button class="pill" data-close="1">Close</button></div><small>Open a town to play it. Connect two towns and each shows up as the other\'s neighbour, joined by a road.</small>', el => {
+  openModal('<h3>My Region (' + INDEX.list.length + '/' + CONFIG.maxTowns + ' towns)</h3><div class="scroll">' + rows + '</div><div class="row"><button class="pill t-mint" id="tnNew">' + ic('plus') + 'New town</button>' + (INDEX.list.length > 1 ? '<button class="pill t-sky" id="tnMap">' + ic('town') + 'Region map</button>' : '') + '<button class="pill" data-close="1">Close</button></div><small>All your towns share one region: the others appear in the distance, joined by roads. Tap one in the distance (use Explore) or press Visit to go there.</small>', el => {
     el.querySelector('#tnNew').onclick = () => openNewTownSheet();
+    const mp = el.querySelector('#tnMap'); if (mp) mp.onclick = () => { closeModal(); showRegion(); };
     el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { closeModal(); switchTown(b.dataset.open); });
-    el.querySelectorAll('[data-link]').forEach(b => b.onclick = () => { const id = b.dataset.link; if (S.connected.some(c => c.id === id)) disconnectTown(id); else connectTown(id); openTowns(); });
     el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
       const t = INDEX.list.find(q => q.id === b.dataset.del); if (!t) return;
       modalEl.firstChild.innerHTML = '<h3>Delete "' + esc(t.name) + '"?</h3><div>This town and its buildings will be gone for good.</div><div class="row"><button class="pill t-peach" id="dlYes">Delete</button><button class="pill t-mint" id="dlNo">Keep it</button></div>';
@@ -2583,7 +2631,7 @@ function tick(dtMs, t0) {
   const dt = S.paused ? 0 : Math.min(dtMs / 1000, 0.05); simT += dt;
   updateTimers(dt); updateTweens(dt);
   updateCamera(Math.min(dtMs / 1000, 0.05)); updateOrb(dt, simT); updateSite(dt); updateBricks(dt, simT); lsUpdate(dt); updateParticles(dt); updateFlags(dt, simT);
-  updateLabelPos(); syncDone(); updateTraffic(dt); Audio.update(dt, audioEnv());
+  updateLabelPos(); syncDone(); updateTraffic(dt); updateRegionLabels(); Audio.update(dt, audioEnv());
   renderer.render(scene, camera);
   perfSample(dtMs, performance.now() - t0, dt);
 }
@@ -2601,6 +2649,7 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
 (function boot() {
   INDEX = readIndex();
   if (!INDEX) { INDEX = { v: 1, current: null, list: [] }; migrateOld(); }
+  normalizeRegions();
   let d = null, id = null;
   for (const tid of [INDEX.current].concat(INDEX.list.map(t => t.id))) { if (!tid) continue; const dd = readTown(tid); if (dd) { d = dd; id = tid; break; } }
   if (d) Object.assign(S.settings, d.settings || {});
