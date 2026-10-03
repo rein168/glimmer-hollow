@@ -23,6 +23,11 @@ body{height:100vh;height:100dvh}
 .t-pink{background:#ffd3de}.t-sky{background:#cfe8fb}.t-lav{background:#e4d9fb}.t-mint{background:#c9f0d9}.t-butter{background:#fff0b0}.t-peach{background:#ffdcbc}
 .pill.on{box-shadow:0 0 0 3px #ff9a4a,0 6px 14px rgba(120,90,40,.22)}
 .shutter .ic{width:46px;height:46px;margin:0}
+#hint small{display:block;font-size:13px;font-weight:700;opacity:.85;margin-top:2px}
+#prog{position:absolute;left:calc(14px + var(--sl));top:calc(68px + var(--st));display:none;align-items:center;gap:8px;pointer-events:none;font-size:12px;font-weight:800}
+#prog .bar{width:min(30vw,130px);height:10px;border-radius:99px;background:#fff6e0;border:2px solid var(--gold);overflow:hidden}
+#prog .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffb7c9,#ffd36e);border-radius:99px}
+#prog span{background:var(--cream);border:2px solid var(--gold);border-radius:99px;padding:2px 8px;white-space:nowrap}
 #hint .f{width:64px;height:64px;margin:0 auto 4px}
 #hint .f .ic{width:64px;height:64px;margin:0}
 .sheet h3 .ic{vertical-align:middle;margin-right:6px}
@@ -75,7 +80,8 @@ input[type=text]{font:700 18px ui-rounded,system-ui,sans-serif;padding:10px 14px
     <button class="pill t-butter" id="btnTown" aria-label="Rename town"><span class="tn"><b id="townName"></b><span id="count"></span></span><i class="ic" data-i="pencil" style="margin:0 0 0 8px;width:20px;height:20px"></i></button>
     <div class="r"><button class="pill round t-mint" id="btnExplore" aria-label="Explore town"><i class="ic" data-i="compass"></i></button><button class="pill round t-butter" id="btnSound" aria-label="Sound"><i class="ic" data-i="soundOn"></i></button><button class="pill round t-sky" id="btnPause" aria-label="Pause"><i class="ic" data-i="pause"></i></button></div>
   </div>
-  <div id="hint"><span class="f"><i class="ic" data-i="finger"></i></span>Press and hold anywhere</div>
+  <div id="hint"><span class="f"><i class="ic" data-i="finger"></i></span>Press and hold anywhere<small>…or wait: your town builds by itself</small></div>
+  <div id="prog"><div class="bar"><i></i></div><span></span></div>
   <div id="bottom">
     <button class="pill t-pink" id="btnPhoto"><i class="ic" data-i="camera"></i>Photo</button>
     <button class="pill t-sky" id="btnList"><i class="ic" data-i="town"></i>Town</button>
@@ -113,7 +119,7 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
-const VERSION = '0.13.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
+const VERSION = '0.14.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
@@ -126,6 +132,7 @@ const CONFIG = {
             maxFlying: 30, flightTime: 0.8, arcHeight: 2.2, orbLerp: 12 },
   loose: { max: 28, respawnPerSec: 3.2, burstOnNewSite: 20 },
   build: { targetSecs: 24 },   // hold-still build time target; moving is ~2-3x faster
+  idle: { baseSecs: 120, perBrickSecs: 1.5 },   // idle build time = baseSecs + bricks * perBrickSecs (e.g. ~3.5 min for a cottage); only while the game is open and on screen
   weights: { shop: 0.5, home: 0.35, landmark: 0.15 },
   perf: { slowMs: 22, slowSecs: 3, fastMs: 12, fastSecs: 10, vsyncMs: 18.5, cpuMsOk: 9, graceSecs: 3, cooldownSecs: 25 },
   lights: { hemi: 1.5, sun: 2.5, amb: 1.5 },
@@ -1309,6 +1316,16 @@ function distToSeg(px, pz, ax, az, bx, bz) {
   return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 function pickRadius() { const C = CONFIG.pickup; return C.baseRadius + C.growRadius * (1 - Math.exp(-orb.holdT / C.growTime)) + C.moveBonus * Math.min(1, orb.speed / C.moveSpeedRef); }
+function idleBuildSecs(n) { return CONFIG.idle.baseSecs + n * CONFIG.idle.perBrickSecs; }
+function tapBoost(x, y) {   // a tap sends a quick burst of bricks
+  if (!site || site.state !== 'building' || S.explore || S.paused) return;
+  groundHit(x, y, _hit); const tx = _hit.x, tz = _hit.z;
+  for (let i = 0; i < 3; i++) after(i * 0.12, () => {
+    if (!site || site.state !== 'building' || site.assigned >= site.layout.slots.length || flying >= CONFIG.pickup.maxFlying) return;
+    let best = null, bd = 1e9; for (const b of loose) if (b.st === 'idle') { const d = Math.hypot(b.x - tx, b.z - tz); if (d < bd) { bd = d; best = b; } }
+    if (best) launchBrick(best, site.assigned);
+  });
+}
 function launchBrick(b, idx) {
   const C = CONFIG.pickup, s = site.layout.slots[idx];
   b.st = 'fly'; b.slot = idx; b.t = 0; b.dur = C.flightTime * (0.85 + Math.random() * 0.3); b.trail = 0;
@@ -1353,6 +1370,14 @@ function updateBricks(dt, t) {
     } else if (orb.pickT < 0) orb.pickT = 0;
   } else for (const b of loose) if (b.st === 'hot') b.st = 'idle';
   // respawn
+  // idle building: even with nobody touching, the builders add one brick at a time (touch makes it much faster)
+  if (site && site.state === 'building' && !S.paused && site.assigned < site.layout.slots.length) {
+    const n = site.layout.slots.length, per = idleBuildSecs(n) / n; site.idleT = (site.idleT || 0) + dt;
+    if (site.idleT >= per) {
+      let best = null, bd = 1e9; for (const q of loose) if (q.st === 'idle') { const d2 = Math.hypot(q.x - site.x, q.z - site.z); if (d2 < bd) { bd = d2; best = q; } }
+      if (best && flying < CONFIG.pickup.maxFlying) { launchBrick(best, site.assigned); site.idleT = 0; } else site.idleT = per;
+    }
+  }
   const need = site ? Math.max(0, site.layout.slots.length - site.assigned) : 0, cap = Math.min(CONFIG.loose.max, need);   // never more loose bricks than the building still needs
   if (site && loose.length < 60 && cap > 0) {
     spawnAcc += dt * Math.max(CONFIG.loose.respawnPerSec, 2.5 / Math.max(0.05, CONFIG.build.targetSecs * 0.8 / site.layout.slots.length));
@@ -2124,7 +2149,7 @@ function pointerEnd(e) {
   ptrs.delete(e.pointerId);
   if (hold.id === e.pointerId) hold.active = false;
   if (gesture && gesture.ids.indexOf(e.pointerId) >= 0) gesture = null;
-  if (e.type === 'pointerup' && !gestureLock && !p.orbit && S.mode === 'play' && !modalOpen && performance.now() - p.t < 260 && p.moved < 10) handleTap(p.x, p.y);
+  if (e.type === 'pointerup' && !gestureLock && !p.orbit && S.mode === 'play' && !modalOpen && performance.now() - p.t < 260 && p.moved < 10) handleTap(p.x, p.y); tapBoost(p.x, p.y);
   if (ptrs.size === 0) { gestureLock = false; gesture = null; }
 }
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => cv.addEventListener(ev, pointerEnd));
@@ -2367,6 +2392,15 @@ function finishTown(old) {
   site = null; camFocusTown(1.8); refreshUI(); saveNow(); Audio.chime();
 }
 let doneShown = false;
+let progT = 0;
+function updateProg(dt) {
+  const el = $('prog'); if (!site || S.mode !== 'play') { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+  if (el.style.display !== 'flex') el.style.display = 'flex';
+  const n = site.layout.slots.length, bar = el.firstChild.firstChild; bar.style.width = (site.placed / n * 100).toFixed(1) + '%';
+  if (performance.now() - progT < 300) return; progT = performance.now();
+  const boosted = orb.active && hold.active, rem = (n - site.assigned) * idleBuildSecs(n) / n, m = Math.floor(rem / 60), sc = Math.floor(rem % 60);
+  el.lastChild.textContent = S.paused ? 'Paused' : boosted ? 'Building fast!' : 'Auto-building · ' + m + ':' + ('0' + sc).slice(-2) + ' left';
+}
 function syncDone() { const show = !!S.complete && S.mode === 'play' && !modalOpen; if (show !== doneShown) { doneShown = show; $('done').style.display = show ? 'flex' : 'none'; } }
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(toast.h); toast.h = setTimeout(() => { t.style.opacity = 0; }, 2800); }
 
@@ -2631,7 +2665,7 @@ function tick(dtMs, t0) {
   const dt = S.paused ? 0 : Math.min(dtMs / 1000, 0.05); simT += dt;
   updateTimers(dt); updateTweens(dt);
   updateCamera(Math.min(dtMs / 1000, 0.05)); updateOrb(dt, simT); updateSite(dt); updateBricks(dt, simT); lsUpdate(dt); updateParticles(dt); updateFlags(dt, simT);
-  updateLabelPos(); syncDone(); updateTraffic(dt); updateRegionLabels(); Audio.update(dt, audioEnv());
+  updateLabelPos(); syncDone(); updateProg(); updateTraffic(dt); updateRegionLabels(); Audio.update(dt, audioEnv());
   renderer.render(scene, camera);
   perfSample(dtMs, performance.now() - t0, dt);
 }
