@@ -15,7 +15,7 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 
 ## Your town
 - Buildings are placed organically (not on a grid) and face the nearest street; cobblestone streets link each building to its neighbours.
-- A new town sits beside a **river**, a **hill**, **another town** or a **road** (random, or choose one in Menu → Reset town). Buildings keep clear of it.
+- A new town sits beside a **river**, a **hill**, a **forest**, **another town** or a **road** (random, or choose one in Menu → Reset town). Buildings keep clear of it. Rivers may get an arched wooden bridge; hills may get a winding stone path up to a lookout (open platform or stone gazebo) — all randomised.
 - Roofs are built from rows of big overlapping tiles; walls from mixed-size bricks.
 
 ## Deploy on GitHub Pages

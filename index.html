@@ -933,7 +933,7 @@ function pickPos(R) {
   if (!S.buildings.length) return [0, 0];
   const bs = S.buildings.map(b => { const q = lotPos(b.lot); return { x: q.x, z: q.z, R: layoutFor(b).R }; });
   let cx = 0, cz = 0; bs.forEach(b => { cx += b.x; cz += b.z; }); cx /= bs.length; cz /= bs.length;
-  const segs = TERR.links.slice(); S.buildings.forEach(b => { const q = lotPos(b.lot); connectionsOf(b).forEach(c => segs.push([q.x, q.z, c.x, c.z])); });
+  const segs = TERR.links.map(l => [l.a[0], l.a[1], l.b[0], l.b[1]]); S.buildings.forEach(b => { const q = lotPos(b.lot); connectionsOf(b).forEach(c => segs.push([q.x, q.z, c.x, c.z])); });
   const gap = CONFIG.buildingGap, plazaR = CONFIG.plazaRadius - 1.0;
   let best = null, bestS = 1e9;
   for (let k = 0; k < 260; k++) {
@@ -1361,21 +1361,44 @@ function updateOrb(dt, t) {
 /* ============================================================
    TERRAIN — what the town sits beside: river | hill | neighbor town | road
    ============================================================ */
-const TERR = { kind: 'none', seed: 1, pts: [], width: 0, hill: null, nb: null, mesh: null, fake: [], links: [] };
-const TERR_KINDS = ['river', 'hill', 'neighbor', 'road'];
-const TERR_LABEL = { river: 'a river', hill: 'a hill', neighbor: 'another town', road: 'a road', none: 'open meadow' };
+const TERR = { kind: 'none', seed: 1, pts: [], width: 0, hill: null, nb: null, forest: null, bridge: null, mesh: null, fake: [], links: [] };
+const TERR_KINDS = ['river', 'hill', 'neighbor', 'road', 'forest'];
+const TERR_LABEL = { river: 'a river', hill: 'a hill', neighbor: 'another town', road: 'a road', forest: 'a forest', none: 'open meadow' };
 function terrainInit(kind, seed) {
-  Object.assign(TERR, { kind, seed, pts: [], width: 0, hill: null, nb: null, links: [] });
-  const rng = mulberry32(seed), a0 = rng() * TAU, ux = Math.cos(a0), uz = Math.sin(a0), tx = -uz, tz = ux, phi = rng() * 6;
+  Object.assign(TERR, { kind, seed, pts: [], width: 0, hill: null, nb: null, forest: null, bridge: null, links: [] });
+  const rng = mulberry32(seed), a0 = rng() * TAU, ux = Math.cos(a0), uz = Math.sin(a0), tx = -uz, tz = ux, phi = rng() * 6, vr = mulberry32(seed + 5);
+  const link = (ax, az, bx, bz, ar, br) => TERR.links.push({ a: [ax, az], b: [bx, bz], ar, br });
   if (kind === 'river' || kind === 'road') {
     const d = kind === 'river' ? 28 : 25, amp = kind === 'river' ? 6 : 3.5;
     for (let sd = -170; sd <= 170; sd += 5) { const w = Math.sin(sd * 0.045 + phi) * amp + Math.sin(sd * 0.11 + phi * 2) * 1.6; TERR.pts.push([ux * (d + w) + tx * sd, uz * (d + w) + tz * sd]); }
     TERR.width = kind === 'river' ? 8 : 4.8;
-  } else if (kind === 'hill') TERR.hill = { x: ux * 33, z: uz * 33, r: 15, h: 10, ux, uz };
-  else if (kind === 'neighbor') TERR.nb = { x: ux * 46, z: uz * 46, r: 16, ux, uz };
-  if (kind === 'road') { let bi = 0, bd = 1e9; TERR.pts.forEach((q, i) => { const d = Math.hypot(q[0], q[1]); if (d < bd) { bd = d; bi = i; } }); TERR.links.push([0, 0, TERR.pts[bi][0], TERR.pts[bi][1]]); }
-  if (kind === 'neighbor') TERR.links.push([0, 0, TERR.nb.x, TERR.nb.z]);
+    let bi = 0, bd = 1e9; TERR.pts.forEach((q, i) => { const dd = Math.hypot(q[0], q[1]); if (dd < bd) { bd = dd; bi = i; } });
+    if (kind === 'road') link(0, 0, TERR.pts[bi][0], TERR.pts[bi][1], CONFIG.plazaRadius - 1, 2.2);
+    else if (vr() < 0.8) {   // random bridge over the river, near the town
+      const i = clamp(bi + Math.round((vr() - 0.5) * 14), 4, TERR.pts.length - 5), q = TERR.pts[i], a = TERR.pts[i - 1], c = TERR.pts[i + 1];
+      let dx = c[0] - a[0], dz = c[1] - a[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      let nx = -dz, nz = dx; if (nx * q[0] + nz * q[1] < 0) { nx = -nx; nz = -nz; }
+      const e = TERR.width / 2 + 3.5;
+      TERR.bridge = { x: q[0], z: q[1], nx, nz, tx: dx, tz: dz, ry: Math.atan2(-nz, nx) };
+      link(0, 0, q[0] - nx * e, q[1] - nz * e, CONFIG.plazaRadius - 1, 0.5);
+      link(q[0] - nx * e, q[1] - nz * e, q[0] + nx * (e + 3), q[1] + nz * (e + 3), 0, 0);
+    }
+  } else if (kind === 'hill') {
+    const h = TERR.hill = { x: ux * 33, z: uz * 33, r: 15, h: 10, ph: vr() * 6, dir: vr() < 0.5 ? 1 : -1, turns: 1.1 + vr() * 0.8, path: vr() < 0.9, lookout: vr() < 0.85, style: vr() < 0.5 ? 0 : 1 };
+    if (!h.path && !h.lookout) h.path = true;
+    h.a0 = Math.atan2(-h.z, -h.x);
+    if (h.path) { const sx = h.x + Math.cos(h.a0) * h.r * 0.95, sz = h.z + Math.sin(h.a0) * h.r * 0.95; link(0, 0, sx, sz, CONFIG.plazaRadius - 1, 0.3); }
+  } else if (kind === 'neighbor') { TERR.nb = { x: ux * 46, z: uz * 46, r: 16, ux, uz }; link(0, 0, TERR.nb.x, TERR.nb.z, CONFIG.plazaRadius - 1, 6); }
+  else if (kind === 'forest') {
+    const f = TERR.forest = { x: ux * 34, z: uz * 34, r: 20, ph: phi, ux, uz };
+    link(0, 0, f.x - ux * f.r * 0.9, f.z - uz * f.r * 0.9, CONFIG.plazaRadius - 1, 0.3);
+  }
 }
+function hillY(x, z) {
+  const h = TERR.hill, nx = (x - h.x) / h.r, nz = (z - h.z) / h.r, q = nx * nx + nz * nz; if (q >= 1) return 0;
+  return h.h * Math.pow(1 - q, 1.15) * (1 + 0.12 * Math.sin(4 * nx + 3 * nz + h.ph));
+}
+function forestR(x, z) { const f = TERR.forest; return f.r * (1 + 0.14 * Math.sin(3 * Math.atan2(z - f.z, x - f.x) + f.ph)); }
 function distToPts(x, z) {
   let m = 1e9; const P = TERR.pts;
   for (let i = 0; i < P.length - 1; i++) { const d = distToSeg(x, z, P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]); if (d < m) m = d; }
@@ -1387,6 +1410,7 @@ function terrainBlocked(x, z, r) {
     case 'road': return distToPts(x, z) < TERR.width / 2 + r + 0.6;
     case 'hill': return Math.hypot(x - TERR.hill.x, z - TERR.hill.z) < TERR.hill.r + r;
     case 'neighbor': return Math.hypot(x - TERR.nb.x, z - TERR.nb.z) < TERR.nb.r + r + 1;
+    case 'forest': return Math.hypot(x - TERR.forest.x, z - TERR.forest.z) < forestR(x, z) + r;
   }
   return false;
 }
@@ -1407,6 +1431,54 @@ function ribbonGeo(pts, hw, y, cE, cM) {
   }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
 }
+function hillGeo() {
+  const h = TERR.hill, M = 16, N = 44, pos = [], idx = [];
+  for (let j = 0; j <= M; j++) for (let i = 0; i < N; i++) { const a = i / N * TAU, rr = h.r * j / M, x = h.x + Math.cos(a) * rr, z = h.z + Math.sin(a) * rr; pos.push(x, hillY(x, z) + 0.02, z); }
+  for (let j = 0; j < M; j++) for (let i = 0; i < N; i++) { const a = j * N + i, b = j * N + (i + 1) % N, c = (j + 1) * N + i, d = (j + 1) * N + (i + 1) % N; idx.push(a, b, c, b, d, c); }
+  let g = new THREE.BufferGeometry(); g.setIndex(idx); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g = g.toNonIndexed();
+  const pa = g.attributes.position, col = new Float32Array(pa.count * 3);
+  for (let t = 0; t < pa.count; t += 3) {
+    const u = clamp((pa.getY(t) + pa.getY(t + 1) + pa.getY(t + 2)) / 3 / h.h, 0, 1); _c.copy(PC.hillA).lerp(PC.hillB, u);
+    for (let q = 0; q < 3; q++) { col[(t + q) * 3] = _c.r; col[(t + q) * 3 + 1] = _c.g; col[(t + q) * 3 + 2] = _c.b; }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+}
+const hx = c => '#' + c.getHexString();
+function lookoutGeos(geos) {
+  const h = TERR.hill, x = h.x, z = h.z, y = hillY(x, z) + 0.02, wood = hx(PC.wood), cream = hx(PC.cream);
+  if (h.style === 0) {   // open wooden platform with railing and flag
+    geos.push(mk(cyl(1.8, 1.9, 0.5, 10), wood, { x, y: y + 0.05, z }));
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * TAU, am = a + Math.PI / 8;
+      geos.push(mk(box(0.14, 1.1, 0.14), cream, { x: x + Math.cos(a) * 1.65, y: y + 0.85, z: z + Math.sin(a) * 1.65 }));
+      geos.push(mk(box(1.26, 0.1, 0.1), wood, { x: x + Math.cos(am) * 1.52, y: y + 1.25, z: z + Math.sin(am) * 1.52, ry: -(am + Math.PI / 2) }));
+    }
+    geos.push(mk(box(0.08, 2.4, 0.08), wood, { x: x + 0.3, y: y + 1.5, z }));
+    geos.push(mk(box(0.85, 0.45, 0.04), hx(PC.accent), { x: x + 0.75, y: y + 2.4, z }));
+  } else {               // little stone gazebo with a pointed roof
+    geos.push(mk(cyl(1.95, 2.05, 0.45, 10), hx(PC.stone), { x, y: y + 0.1, z }));
+    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; geos.push(mk(box(0.22, 1.7, 0.22), cream, { x: x + Math.cos(a) * 1.6, y: y + 1.2, z: z + Math.sin(a) * 1.6 })); }
+    geos.push(mk(cyl(0.05, 2.2, 1.1, 6), hx(PC.roofs[1]), { x, y: y + 2.6, z }));
+    geos.push(mk(ico(0.16, 0), hx(PC.accent), { x, y: y + 3.25, z }));
+  }
+}
+function bridgeGeos(geos) {
+  const b = TERR.bridge, W = TERR.width, Lb = W + 5, seg = 12, wood = hx(PC.wood), plank = hx(PC.wood.clone().multiplyScalar(1.15)), cream = hx(PC.cream), stone = hx(PC.stone), c = Math.cos(b.ry), sn = Math.sin(b.ry);
+  const wp = (lx, lz) => [b.x + lx * c + lz * sn, b.z - lx * sn + lz * c];
+  const arch = u => 0.14 + 1.0 * (1 - u * u);                     // u in [-1,1] along the bridge
+  for (let i = 0; i < seg; i++) {
+    const u0 = -1 + 2 * i / seg, u1 = -1 + 2 * (i + 1) / seg, um = (u0 + u1) / 2, lx = um * Lb / 2, y = arch(um) + 0.25, tilt = -Math.atan2(arch(u1) - arch(u0), (u1 - u0) * Lb / 2), sl = Math.hypot((u1 - u0) * Lb / 2, arch(u1) - arch(u0)) + 0.06;
+    let [x, z] = wp(lx, 0);
+    geos.push(mk(box(sl, 0.22, 2.5), plank, { x, y, z, rz: tilt, ry: b.ry }));
+    for (const side of [-1, 1]) {
+      [x, z] = wp(lx, side * 1.15);
+      geos.push(mk(box(sl, 0.09, 0.09), cream, { x, y: y + 0.85, z, rz: tilt, ry: b.ry }));
+      if (i % 2 === 0) { const [px, pz] = wp(u0 * Lb / 2, side * 1.15); geos.push(mk(box(0.13, 0.9, 0.13), wood, { x: px, y: arch(u0) + 0.7, z: pz })); }
+    }
+  }
+  for (const e of [-1, 1]) { const [x, z] = wp(e * (Lb / 2 + 0.2), 0); geos.push(mk(box(1.2, 0.5, 2.9), stone, { x, y: 0.2, z, ry: b.ry })); }
+  const [x, z] = wp(0, 0); geos.push(mk(box(Lb * 0.7, 0.35, 2.2), stone, { x, y: 0.05, z, ry: b.ry }));
+}
 function clearTerrain() {
   if (TERR.mesh) { scene.remove(TERR.mesh); TERR.mesh.geometry.dispose(); TERR.mesh = null; }
   TERR.fake.forEach(b => disposeBuildingObject(b)); TERR.fake = [];
@@ -1416,21 +1488,13 @@ function buildTerrain() {
   if (k === 'river') {
     geos.push(ribbonGeo(TERR.pts, TERR.width / 2 + 1.3, 0.02, new C3('#efe2b8'), new C3('#efe2b8')));
     geos.push(ribbonGeo(TERR.pts, TERR.width / 2, 0.045, new C3('#a9defa'), new C3('#6cc0ee')));
+    if (TERR.bridge) bridgeGeos(geos);
   } else if (k === 'road') {
     geos.push(ribbonGeo(TERR.pts, TERR.width / 2 + 0.4, 0.02, new C3('#e8dfc8'), new C3('#e8dfc8')));
     geos.push(ribbonGeo(TERR.pts, TERR.width / 2, 0.035, new C3('#cfc5b0'), new C3('#c4b9a2')));
     for (let i = 0; i < TERR.pts.length - 1; i += 2) geos.push(ribbonGeo([TERR.pts[i], TERR.pts[i + 1]], 0.13, 0.05, PC.cream, PC.cream));
   } else if (k === 'hill') {
-    const h = TERR.hill, g = new THREE.IcosahedronGeometry(1, 3).toNonIndexed(), pa = g.attributes.position, col = new Float32Array(pa.count * 3);
-    for (let i = 0; i < pa.count; i++) {
-      const x = pa.getX(i), y = Math.max(pa.getY(i), -0.04), z = pa.getZ(i);
-      pa.setXYZ(i, h.x + x * h.r * (1 + 0.07 * Math.sin(z * 5)), y * h.h * (1 + 0.14 * Math.sin(x * 4 + z * 3)), h.z + z * h.r * (1 + 0.07 * Math.sin(x * 5)));
-    }
-    for (let t = 0; t < pa.count; t += 3) {
-      const u = clamp((pa.getY(t) + pa.getY(t + 1) + pa.getY(t + 2)) / 3 / h.h, 0, 1); _c.copy(PC.hillA).lerp(PC.hillB, u);
-      for (let q = 0; q < 3; q++) { col[(t + q) * 3] = _c.r; col[(t + q) * 3 + 1] = _c.g; col[(t + q) * 3 + 2] = _c.b; }
-    }
-    g.deleteAttribute('uv'); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals(); geos.push(g);
+    geos.push(hillGeo()); if (TERR.hill.lookout) lookoutGeos(geos);
   }
   if (geos.length) { TERR.mesh = new THREE.Mesh(mergeGeos(geos), litMat('vc')); TERR.mesh.userData.lk = 'vc'; shadowFlags(TERR.mesh, false, true); TERR.mesh.frustumCulled = false; scene.add(TERR.mesh); }
   if (k === 'neighbor') {
@@ -1444,20 +1508,40 @@ function buildTerrain() {
 }
 function addTerrainDecor() {
   const k = TERR.kind; if (k === 'none') return;
-  const rng = mulberry32(TERR.seed + 7), tree = (x, z) => { const sc = 0.8 + rng() * 0.6; lsAdd('tree', x, 0, z, rng() * 3, sc, sc, sc, PC.foliage[Math.floor(rng() * 3)], 0, false); };
+  const rng = mulberry32(TERR.seed + 7), dens = Q.garden / 1.6, tree = (x, z, y) => { const sc = 0.8 + rng() * 0.6; lsAdd('tree', x, y || 0, z, rng() * 3, sc, sc, sc, PC.foliage[Math.floor(rng() * 3)], 0, false); };
   if (k === 'river' || k === 'road') {
     const P = TERR.pts;
     for (let i = 0; i < (k === 'river' ? 30 : 18); i++) { const q = P[Math.floor(rng() * P.length)], l = Math.hypot(q[0], q[1]) || 1, off = TERR.width / 2 + 3 + rng() * 9; tree(q[0] + q[0] / l * off, q[1] + q[1] / l * off); }
     if (k === 'road') for (let i = 0; i < P.length; i += 3) { const q = P[i], l = Math.hypot(q[0], q[1]) || 1, off = TERR.width / 2 + 0.9; lsAdd('lamp', q[0] - q[0] / l * off, 0, q[1] - q[1] / l * off, 0, 1, 1, 1, null, 0, false); }
+    if (TERR.bridge) { const b = TERR.bridge, e = TERR.width / 2 + 1.3; for (const sd of [-1, 1]) for (const sg of [-1, 1]) lsAdd('lamp', b.x + b.nx * e * sd + b.tx * 1.8 * sg, 0, b.z + b.nz * e * sd + b.tz * 1.8 * sg, 0, 1, 1, 1, null, 0, false); }
   } else if (k === 'hill') {
     const h = TERR.hill;
-    for (let i = 0; i < 16; i++) { const a = Math.atan2(h.uz, h.ux) + (rng() - 0.5) * 2.6, r = h.r + 0.5 + rng() * 4; tree(h.x + Math.cos(a) * r, h.z + Math.sin(a) * r); }
+    for (let i = 0; i < 16; i++) { const a = Math.atan2(-h.z, -h.x) + Math.PI + (rng() - 0.5) * 2.6, r = h.r + 0.5 + rng() * 4; tree(h.x + Math.cos(a) * r, h.z + Math.sin(a) * r); }
+    if (h.path) {                       // winding stone path up to the summit
+      const steps = 400, top = h.r * 0.14; let px = 0, pz = 0, acc = 0, first = true;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps, a = h.a0 + h.dir * h.turns * TAU * t, rr = h.r * (0.95 - 0.88 * t), x = h.x + Math.cos(a) * rr, z = h.z + Math.sin(a) * rr;
+        if (!first) acc += Math.hypot(x - px, z - pz); px = x; pz = z;
+        if (first || acc >= 0.78) { acc = 0; first = false; const sc = 1.15 + rng() * 0.3; lsAdd('stone', x, hillY(x, z) + 0.07, z, rng() * 3, sc, 1, sc, new C3('#cdbfa6').multiplyScalar(0.96 + rng() * 0.08), 0, false); }
+      }
+    }
   } else if (k === 'neighbor') {
     const nb = TERR.nb;
     for (let i = 0; i < 18; i++) { const a = rng() * TAU, r = Math.sqrt(rng()) * (nb.r + 2), x = nb.x + Math.cos(a) * r, z = nb.z + Math.sin(a) * r; if (TERR.fake.every(f => Math.hypot(f.lot[0] - x, f.lot[1] - z) > f.rt.R + 1.5)) tree(x, z); }
     TERR.fake.forEach((f, i) => { if (!i) return; let best = null, bd = 1e9; for (let j = 0; j < i; j++) { const d = Math.hypot(f.lot[0] - TERR.fake[j].lot[0], f.lot[1] - TERR.fake[j].lot[1]); if (d < bd) { bd = d; best = TERR.fake[j]; } } if (best) streetStones(f.lot[0], f.lot[1], f.rt.R, best.lot[0], best.lot[1], best.rt.R, f.seed, false, false); });
+  } else if (k === 'forest') {
+    const f = TERR.forest, N = 260, cm = [new C3('#ff8f8f'), new C3('#e8b0ff'), new C3('#ffc47a')];
+    lsAdd('lush', f.x, 0.012, f.z, 0, f.r * 1.1, 1, f.r * 1.1, null, 0, false);
+    for (let i = 0; i < N; i++) {
+      const a = rng() * TAU, rr = Math.sqrt(rng()) * f.r * (1 + 0.14 * Math.sin(3 * a + f.ph)) * 0.97, x = f.x + Math.cos(a) * rr, z = f.z + Math.sin(a) * rr, sc = 0.9 + rng() * 0.7, ry = rng() * 3, col = PC.foliage[Math.floor(rng() * 3)], sy = 1 + rng() * 0.25;
+      if (i < Math.ceil(N * dens) && distToSeg(x, z, 0, 0, f.x - f.ux * f.r * 0.9, f.z - f.uz * f.r * 0.9) > 1.6) lsAdd('tree', x, 0, z, ry, sc, sc * sy, sc, col, 0, false);
+    }
+    for (let i = 0; i < 70; i++) {
+      const a = rng() * TAU, rr = Math.sqrt(rng()) * f.r * 0.95, x = f.x + Math.cos(a) * rr, z = f.z + Math.sin(a) * rr, kind = rng(), s2 = 0.8 + rng() * 0.6, col = PC.foliage[Math.floor(rng() * 3)], mc = cm[Math.floor(rng() * 3)];
+      if (i < Math.ceil(70 * dens)) { if (kind < 0.6) lsAdd('bush', x, 0, z, rng() * 3, s2, s2, s2, col, 0, false); else lsAdd('mush', x, 0, z, rng() * 3, s2, s2, s2, mc, 0, false); }
+    }
   }
-  TERR.links.forEach((g, i) => { if (k === 'neighbor') { const f = TERR.fake[0]; streetStones(0, 0, CONFIG.plazaRadius - 1, g[2], g[3], 6, TERR.seed + 31, false, false); } else streetStones(0, 0, CONFIG.plazaRadius - 1, g[2], g[3], 2.2, TERR.seed + 31, false, false); });
+  TERR.links.forEach((l, i) => streetStones(l.a[0], l.a[1], l.ar, l.b[0], l.b[1], l.br, TERR.seed + 31 + i, false, true));
 }
 function newSetting(kind) {
   const k = kind && kind !== 'random' ? kind : TERR_KINDS[Math.floor(Math.random() * TERR_KINDS.length)];
@@ -1888,7 +1972,7 @@ function bindMenu(el) {
   const rn = el.querySelector('[data-act="rename"]');
   if (rn) rn.onclick = () => { closeModal(); nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen()); };
   const r = el.querySelector('[data-act="reset"]');
-  if (r) r.onclick = () => { modalEl.firstChild.innerHTML = '<h3>Start a new town?</h3><div>This deletes every building. It can\'t be undone. Where should the new town sit?</div><div class="row">' + [['river', 'A river'], ['hill', 'A hill'], ['neighbor', 'Another town'], ['road', 'A road'], ['random', 'Surprise me']].map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" id="rsNo">Keep my town</button></div>'; modalEl.firstChild.querySelectorAll('[data-setting]').forEach(b => b.onclick = () => { closeModal(); resetTown(b.dataset.setting); }); $('rsNo').onclick = () => { closeModal(); }; };
+  if (r) r.onclick = () => { modalEl.firstChild.innerHTML = '<h3>Start a new town?</h3><div>This deletes every building. It can\'t be undone. Where should the new town sit?</div><div class="row">' + [['river', 'A river'], ['hill', 'A hill'], ['neighbor', 'Another town'], ['road', 'A road'], ['forest', 'A forest'], ['random', 'Surprise me']].map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" id="rsNo">Keep my town</button></div>'; modalEl.firstChild.querySelectorAll('[data-setting]').forEach(b => b.onclick = () => { closeModal(); resetTown(b.dataset.setting); }); $('rsNo').onclick = () => { closeModal(); }; };
 }
 function refreshMenuIfOpen() { if (menuOpen && modalOpen) { modalEl.firstChild.innerHTML = menuHTML(); bindMenu(modalEl.firstChild); } }
 $('btnMenu').onclick = () => { openModal(menuHTML(), bindMenu); menuOpen = true; };
