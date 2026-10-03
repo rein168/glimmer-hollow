@@ -11,11 +11,15 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 - Finished buildings get a shop name / family name / landmark name. Tap a building (or pick it in **Town List**) to show its label, then tap the label to rename or 🎲 re-roll.
 - **Photo**: frame a building or the whole town, toggle the caption badge, press the shutter. Share sheet where supported, otherwise a download.
 - **Menu**: 3 palettes, quality (Auto / Low / Medium / High), reset town.
+- Each town holds **30–40 buildings** (the cap is picked per town). Loose bricks never outnumber what the building still needs, so none are left lying around when the last piece lands; the scaffold grows with the building; cobble streets grow toward a building as it goes up.
+- The plaza is round or square, and the first building can sit anywhere on it.
+- **Menu → My Towns**: keep up to 8 saved towns, open, delete or **connect** them — a connected town appears as a neighbour town (with its name) joined to yours by a cobble road. **Menu → New town** starts another without losing the current one.
+- The Menu shows the game **version** (bump `VERSION` in `index.html` each release).
 - Progress is saved automatically in `localStorage`.
 
 ## Your town
 - Buildings are placed organically (not on a grid) and face the nearest street; cobblestone streets link each building to its neighbours.
-- A new town sits beside a **river**, a **hill**, a **forest**, **another town** or a **road** (random, or choose one in Menu → Reset town). Buildings keep clear of it. Rivers may get an arched wooden bridge; hills may get a winding stone path up to a lookout (open platform or stone gazebo) — all randomised.
+- A new town sits beside a **river**, a **hill**, a **forest**, **farmland** (crop fields, pastures with cattle, a barn), **another town** or a **road** (random, or choose one in Menu → Reset town). Buildings keep clear of it. Rivers may get an arched wooden bridge; hills may get a winding stone path up to a lookout (open platform or stone gazebo) — all randomised.
 - Roofs are built from rows of big overlapping tiles; walls from mixed-size bricks.
 
 ## Deploy on GitHub Pages

@@ -44,6 +44,13 @@ body.photo #label{display:none!important}
 .shutter{width:68px;height:68px;border-radius:50%;font-size:28px;padding:0}
 #rot{position:fixed;left:0;right:0;top:calc(52% - 24px);display:flex;justify-content:space-between;padding:0 calc(8px + var(--sr)) 0 calc(8px + var(--sl));pointer-events:none;z-index:4}
 #rot .pill{opacity:.9}
+#done{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + var(--sb));display:none;flex-direction:column;align-items:center;gap:8px;padding:12px 16px;background:var(--cream);border:3px solid var(--gold);border-radius:22px;z-index:6;box-shadow:0 8px 20px rgba(80,60,20,.3)}
+#done .dt{font-weight:800;font-size:18px}#done .dr{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--sb));max-width:86vw;padding:10px 16px;border-radius:999px;background:var(--cream);border:2.5px solid var(--gold);font-weight:700;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:40;text-align:center}
+.trow{background:#fff;border:2px solid var(--gold);border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.trow.cur{background:#fff3c4}.ta{display:flex;gap:6px;flex-wrap:wrap}.ta .pill{min-height:42px;padding:0 12px;font-size:14px}.ta .round{width:44px}
+.tt small{display:block;opacity:.7;font-weight:600;font-size:12px;margin-top:2px}.badge{background:#ffd36e;border-radius:999px;padding:2px 8px;font-size:11px;vertical-align:middle}
+.ver{opacity:.6;font-size:12px;text-align:center;font-weight:700;margin-top:4px}
 #flash{position:fixed;left:0;top:0;right:0;bottom:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .45s ease-out;z-index:20}
 #modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(90,70,40,.38);display:none;align-items:flex-start;justify-content:center;z-index:30;padding:calc(8vh + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));box-sizing:border-box}
 #modal.open{display:flex}
@@ -83,6 +90,8 @@ input[type=text]{font:700 18px ui-rounded,system-ui,sans-serif;padding:10px 14px
   <button class="pill t-peach" id="pbExit"><i class="ic" data-i="exit"></i>Exit</button>
 </div>
 <div id="rot"><button class="pill round t-lav" id="btnRotL" aria-label="Rotate left"><i class="ic" data-i="rotL"></i></button><button class="pill round t-lav" id="btnRotR" aria-label="Rotate right"><i class="ic" data-i="rotR"></i></button></div>
+<div id="done"><div class="dt">Town complete!</div><div class="dr"><button class="pill t-sky" id="dnTowns"><i class="ic" data-i="town"></i>My Towns</button><button class="pill t-mint" id="dnNew"><i class="ic" data-i="plus"></i>New town</button></div></div>
+<div id="toast"></div>
 <div id="flash"></div>
 <div id="modal"></div>
 <div id="paused"><div>Paused</div><button class="pill t-mint" id="btnResume"><i class="ic" data-i="play"></i>Resume</button></div>
@@ -104,12 +113,13 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
+const VERSION = '0.10.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
   maxPixels: 2.5e6, photoMaxPixels: 8e6, photoMaxScale: 2,
   fov: 40, pitchDeg: 40, pitchMin: 24, pitchMax: 62, zoomMin: 0.55, zoomMax: 1.7,
-  plazaRadius: 9.6, fitRadius: 6.8, buildingGap: 3.4,
+  fitRadius: 6.8, buildingGap: 3.4, maxTowns: 8,
   brick: { L: 1.0, H: 0.4, T: 0.4 },   // walls are built from mixed big/small bricks (random 1-3 courses tall, 0.5-1.9 long)
   pickup: { baseRadius: 1.5, growRadius: 2.6, growTime: 5, moveBonus: 0.8, moveSpeedRef: 7,
             intervalStill: 0.34, intervalMoving: 0.09, driftMult: 2.3, driftSpeed: 1.6,
@@ -465,11 +475,12 @@ function detectTier() {
 
 /* material cache — Lambert on LOW, Standard on MEDIUM/HIGH; swapped on tier change */
 const matCache = {};
-let plazaTex, groundTex, softTex;
+let plazaTex, plazaSqTex, groundTex, softTex;
 const litDefs = {
   vc: () => ({ vertexColors: true, flatShading: true }),
   ground: () => ({ color: PC.ground.clone(), map: groundTex, flatShading: true }),
   plaza: () => ({ color: PC.plaza.clone(), map: plazaTex, alphaTest: 0.5, flatShading: true }),
+  plazaSq: () => ({ color: PC.plaza.clone(), map: plazaSqTex, alphaTest: 0.5, flatShading: true }),
   lush: () => ({ color: PC.lush.clone(), map: softTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
 };
 function litMat(key) {
@@ -511,6 +522,17 @@ function makePlazaTexture() {
   g.strokeStyle = '#a89f8a'; g.lineWidth = 5; g.beginPath(); g.arc(cx, cx, R - 2, 0, TAU); g.stroke();
   const t = canvasTex(c); t.anisotropy = 4; return t;
 }
+function makePlazaSquareTexture() {
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'), rnd = mulberry32(91);
+  const cols = ['#e4dccb', '#d6cfbf', '#ddd2c0', '#cfc9bd', '#e9e0cf', '#d3ccb9'];
+  g.clearRect(0, 0, N, N); rrect(g, 3, 3, N - 6, N - 6, 46); g.save(); g.clip();
+  g.fillStyle = '#bfb7a3'; g.fillRect(0, 0, N, N);
+  const rh = 32;
+  for (let y = 0, r = 0; y < N; y += rh, r++) { let x = (r & 1) ? -22 : 0; while (x < N) { const w = 38 + rnd() * 22; g.fillStyle = cols[Math.floor(rnd() * cols.length)]; rrect(g, x + 2, y + 2, w - 4, rh - 4, 5); g.fill(); x += w; } }
+  g.strokeStyle = '#a89f8a'; g.lineWidth = 16; rrect(g, 8, 8, N - 16, N - 16, 42); g.stroke();
+  for (let i = 0; i < 420; i++) { g.fillStyle = 'rgba(' + (110 + rnd() * 40 | 0) + ',' + (170 + rnd() * 30 | 0) + ',' + (100 + rnd() * 30 | 0) + ',' + (0.3 + rnd() * 0.35) + ')'; g.beginPath(); g.ellipse(rnd() * N, rnd() * N, 2 + rnd() * 3, 1.5 + rnd() * 2, rnd() * 3, 0, TAU); g.fill(); }
+  g.restore(); const t = canvasTex(c); t.anisotropy = 4; return t;
+}
 function makeGroundTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), rnd = mulberry32(5);
   g.fillStyle = '#fff'; g.fillRect(0, 0, 128, 128);
@@ -532,7 +554,7 @@ function makeGlowTexture() {
    SCENE SETUP
    ============================================================ */
 Q = CONFIG.quality[tierName = detectTier()];
-plazaTex = makePlazaTexture(); groundTex = makeGroundTexture(); softTex = makeSoftTexture(false);
+plazaTex = makePlazaTexture(); plazaSqTex = makePlazaSquareTexture(); groundTex = makeGroundTexture(); softTex = makeSoftTexture(false);
 const blobTex = makeSoftTexture(true), glowTex = makeGlowTexture();
 
 scene = new THREE.Scene();
@@ -553,7 +575,7 @@ sun.shadow.camera.near = 1; sun.shadow.camera.far = 80; sun.shadow.bias = -0.000
 const world = new THREE.Group(); scene.add(world);
 const ground = setLit(new THREE.Mesh(new THREE.CircleGeometry(700, 48), litMat('ground')), 'ground');
 ground.rotation.x = -Math.PI / 2; ground.userData.recv = true; world.add(ground);
-const plaza = setLit(new THREE.Mesh(new THREE.CircleGeometry(CONFIG.plazaRadius, 56), litMat('plaza')), 'plaza');
+const plaza = setLit(new THREE.Mesh(new THREE.CircleGeometry(9.6, 56), litMat('plaza')), 'plaza');
 plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.012; plaza.userData.recv = true; world.add(plaza);
 
 /* hills: low-poly ring following the camera target, fading into fog */
@@ -930,16 +952,16 @@ function connectionsOf(b) {   // earlier buildings this one has a street to (nea
 }
 function distSeg(px, pz, ax, az, bx, bz) { return distToSeg(px, pz, ax, az, bx, bz); }
 function pickPos(R) {
-  if (!S.buildings.length) return [0, 0];
+  if (!S.buildings.length) return TERR.plaza.first.slice();
   const bs = S.buildings.map(b => { const q = lotPos(b.lot); return { x: q.x, z: q.z, R: layoutFor(b).R }; });
   let cx = 0, cz = 0; bs.forEach(b => { cx += b.x; cz += b.z; }); cx /= bs.length; cz /= bs.length;
-  const segs = TERR.links.map(l => [l.a[0], l.a[1], l.b[0], l.b[1]]); S.buildings.forEach(b => { const q = lotPos(b.lot); connectionsOf(b).forEach(c => segs.push([q.x, q.z, c.x, c.z])); });
-  const gap = CONFIG.buildingGap, plazaR = CONFIG.plazaRadius - 1.0;
+  const segs = TERR.links.concat(TERR.connLinks).map(l => [l.a[0], l.a[1], l.b[0], l.b[1]]); S.buildings.forEach(b => { const q = lotPos(b.lot); connectionsOf(b).forEach(c => segs.push([q.x, q.z, c.x, c.z])); });
+  const gap = CONFIG.buildingGap;
   let best = null, bestS = 1e9;
   for (let k = 0; k < 260; k++) {
     const a0 = bs[Math.floor(Math.random() * bs.length)], ang = Math.random() * TAU, dist = a0.R + R + gap + Math.random() * 4.5 * (1 + k / 90);
     const x = a0.x + Math.cos(ang) * dist, z = a0.z + Math.sin(ang) * dist;
-    if (Math.hypot(x, z) < plazaR + R + 1.2) continue;
+    if (plazaDist(x, z) < R + 1.0) continue;
     if (bs.some(o => Math.hypot(o.x - x, o.z - z) < o.R + R + gap)) continue;
     if (terrainBlocked(x, z, R + 1.5) || terrainBlocked((x + a0.x) / 2, (z + a0.z) / 2, 1)) continue;
     if (segs.some(g => distSeg(x, z, g[0], g[1], g[2], g[3]) < R + 1.0)) continue;
@@ -968,15 +990,30 @@ function makePedestal(R) {
   blob.rotation.x = -Math.PI / 2; blob.position.y = 0.03; blob.userData.isBlob = true; blob.visible = !Q.shadow;
   g.add(cyl, ring, halo, blob); g.userData = { ring, halo, cyl, blob }; return g;
 }
-function makeScaffold(L) {
-  const parts = [], wood = '#' + PC.wood.getHexString(), hx = L.hx + 0.5, hz = L.hz + 0.5, h = L.wallTop + 0.5;
+function scaffoldGeo(L, h) {
+  const parts = [], wood = '#' + PC.wood.getHexString(), plank = '#' + PC.wood.clone().multiplyScalar(1.2).getHexString(), hx = L.hx + 0.5, hz = L.hz + 0.5;
   const poles = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]];
   poles.forEach(p => parts.push(mk(new THREE.BoxGeometry(0.13, h, 0.13), wood, { x: p[0], y: h / 2, z: p[1] })));
-  for (let y = 0.9; y < h; y += 1.2) for (let i = 0; i < 4; i++) {
-    const a = poles[i], b = poles[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    parts.push(mk(new THREE.BoxGeometry(len, 0.07, 0.07), wood, { x: (a[0] + b[0]) / 2, y, z: (a[1] + b[1]) / 2, ry: Math.atan2(-(b[1] - a[1]), b[0] - a[0]) }));
+  let deck = -1;
+  for (let y = 0.9; y < h - 0.2; y += 1.2) {
+    deck = y;
+    for (let i = 0; i < 4; i++) {
+      const a = poles[i], b = poles[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      parts.push(mk(new THREE.BoxGeometry(len, 0.07, 0.07), wood, { x: (a[0] + b[0]) / 2, y, z: (a[1] + b[1]) / 2, ry: Math.atan2(-(b[1] - a[1]), b[0] - a[0]) }));
+    }
   }
-  const m = new THREE.Mesh(mergeGeos(parts), litMat('vc')); m.userData.lk = 'vc'; shadowFlags(m, false, false); return m;
+  if (deck > 0) for (let i = 0; i < 4; i++) {   // working platform at the highest level, with a guard rail
+    const a = poles[i], b = poles[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]), mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, l = Math.hypot(mx, mz) || 1, ry = Math.atan2(-(b[1] - a[1]), b[0] - a[0]);
+    parts.push(mk(new THREE.BoxGeometry(len, 0.06, 0.5), plank, { x: mx - mx / l * 0.28, y: deck + 0.05, z: mz - mz / l * 0.28, ry }));
+    parts.push(mk(new THREE.BoxGeometry(len, 0.06, 0.06), wood, { x: mx, y: deck + 0.9, z: mz, ry }));
+  }
+  return mergeGeos(parts);
+}
+function makeScaffold(L, h) { const m = new THREE.Mesh(scaffoldGeo(L, h || 1.5), litMat('vc')); m.userData.lk = 'vc'; shadowFlags(m, false, false); return m; }
+function updateScaffold() {
+  if (!site || !site.scaffold || !site.scaffold.parent) return;
+  const L = site.layout, want = Math.min(Math.max(1.5, site.top + 1.1), L.height + 0.7), h = Math.ceil(want / 0.6) * 0.6;
+  if (h > site.scaffH + 0.01) { site.scaffH = h; site.scaffold.geometry.dispose(); site.scaffold.geometry = scaffoldGeo(L, h); }
 }
 const BRICK_DUMMY = new THREE.Object3D();
 function slotQuat(s, out) { _e.set(s.rx, s.ry, s.rz, 'YXZ'); return out.setFromEuler(_e); }
@@ -987,14 +1024,14 @@ function createSite(rec, placed) {
   const g = new THREE.Group(); g.position.set(pos.x, 0, pos.z); g.rotation.y = yaw; g.updateMatrixWorld(true);
   const ped = makePedestal(L.R); g.add(ped);
   const body = new THREE.Group(); body.position.y = PED_H; g.add(body);
-  const scaffold = makeScaffold(L); body.add(scaffold);
+  const scaffold = makeScaffold(L, 1.5); body.add(scaffold);
   const mesh = new THREE.InstancedMesh(brickGeo(), litMat('vc'), L.slots.length);
   mesh.userData.lk = 'vc'; mesh.frustumCulled = false; shadowFlags(mesh, true, true);
   _m.makeScale(0, 0, 0); for (let i = 0; i < L.slots.length; i++) { mesh.setMatrixAt(i, _m); mesh.setColorAt(i, _c.set(0xffffff)); }
   body.add(mesh); scene.add(g);
-  site = { rec, cfg, layout: L, x: pos.x, z: pos.z, R: L.R, group: g, body, ped, scaffold, mesh, placed: 0, assigned: 0, state: 'rising', settle: [], age: 0, yaw };
+  site = { rec, cfg, layout: L, x: pos.x, z: pos.z, R: L.R, group: g, body, ped, scaffold, mesh, placed: 0, assigned: 0, state: 'rising', settle: [], age: 0, yaw, scaffH: 1.5, top: 0 };
   for (let i = 0; i < placed; i++) setPlaced(i, false);
-  site.assigned = site.placed = placed;
+  site.assigned = site.placed = placed; updateScaffold();
   ped.scale.set(1, 0.01, 1); ped.position.y = -0.3; site.rise = 0;
   return site;
 }
@@ -1003,7 +1040,7 @@ function setPlaced(idx, anim) {
   const s = site.layout.slots[idx]; slotMatrix(s, _m); site.mesh.setMatrixAt(idx, _m);
   site.mesh.setColorAt(idx, slotColor(site.rec, s, _c));
   site.mesh.instanceMatrix.needsUpdate = true; site.mesh.instanceColor.needsUpdate = true;
-  site.placed = Math.max(site.placed, 0);
+  site.top = Math.max(site.top || 0, s.y + s.sy / 2);
   if (anim) site.settle.push({ idx, t: 0 });
 }
 function updateSettle(dt) {
@@ -1175,6 +1212,7 @@ function completeSite() {
   });
   after(1.1, () => { growGarden(b); });
   after(1.5, () => {
+    if (S.buildings.length >= townCap()) { finishTown(s); return; }
     S.selected = b.id; startNextSite(true); S.selected = null; updateLabelText();
   });
 }
@@ -1182,7 +1220,7 @@ function startNextSite(glide) {
   const old = site; const rec = newRec(); S.cur = { type: rec.type, lot: rec.lot, seed: rec.seed, colors: rec.colors, placed: 0 };
   // old group keeps only what's left over: scaffold/pedestal handled by tweens; detach reference
   setTimeout(() => { if (old && old.group && old.group.parent && old.state === 'celebrate') { old.group.parent.remove(old.group); } }, 3000);
-  createSite(rec, 0); refreshLooseForNewSite(); updateShadowCasters(); perf.grace = 3; perf.slow = 0;
+  createSite(rec, 0); setupSitePaths(); refreshLooseForNewSite(); updateShadowCasters(); perf.grace = 3; perf.slow = 0;
   if (glide) camFocusSite(1.5); saveSoon();
 }
 
@@ -1202,7 +1240,7 @@ function camFocus(x, y, z, R, H, dur) {
   if (!dur) { cam.target.set(x, y, z); cam.distBase = d1; cam.glide = null; return; }
   cam.glide = { from: cam.target.clone(), to: new V3(x, y, z), d0: cam.distBase, d1, t: 0, dur };
 }
-function camFocusSite(dur) { if (!site) return; cam.away = false; camFocus(site.x, 1.2, site.z, CONFIG.fitRadius, site.layout.height, dur == null ? 1.0 : dur); }
+function camFocusSite(dur) { if (!site) { camFocusTown(dur == null ? 1 : dur); return; } cam.away = false; camFocus(site.x, 1.2, site.z, CONFIG.fitRadius, site.layout.height, dur == null ? 1.0 : dur); }
 function updateCamera(dt) {
   if (cam.glide) { const g = cam.glide; g.t += dt / g.dur; const u = easeInOut(Math.min(1, g.t)); cam.target.lerpVectors(g.from, g.to, u); cam.distBase = lerp(g.d0, g.d1, u); if (g.t >= 1) cam.glide = null; }
   else cam.distBase = lerp(cam.distBase, fitDist(cam.fitR, cam.fitH), 1 - Math.exp(-6 * dt));
@@ -1272,7 +1310,7 @@ function launchBrick(b, idx) {
 function arrive(b) {
   flying--; b.st = 'dead';
   if (!site || site.state !== 'building' && site.state !== 'rising') return;
-  site.placed++; setPlaced(b.slot, true);
+  site.placed++; setPlaced(b.slot, true); revealPaths(site.placed / site.layout.slots.length, false); updateScaffold();
   _v.set(b.p2.x, b.p2.y + 0.2, b.p2.z); sparkle(_v.x, _v.y, _v.z, 5, 1.0, b.c1);
   Audio.tink(b.slot);
   if (S.cur) { S.cur.placed = site.placed; saveSoon(); }
@@ -1304,10 +1342,13 @@ function updateBricks(dt, t) {
     } else if (orb.pickT < 0) orb.pickT = 0;
   } else for (const b of loose) if (b.st === 'hot') b.st = 'idle';
   // respawn
-  if (site && loose.length < 60) {
+  const need = site ? Math.max(0, site.layout.slots.length - site.assigned) : 0, cap = Math.min(CONFIG.loose.max, need);   // never more loose bricks than the building still needs
+  if (site && loose.length < 60 && cap > 0) {
     spawnAcc += dt * Math.max(CONFIG.loose.respawnPerSec, 2.5 / Math.max(0.05, CONFIG.build.targetSecs * 0.8 / site.layout.slots.length));
-    while (spawnAcc >= 1) { spawnAcc -= 1; if (idleCount() < CONFIG.loose.max) spawnBrick(true); else { spawnAcc = Math.min(spawnAcc, 1); break; } }
+    while (spawnAcc >= 1) { spawnAcc -= 1; if (idleCount() < cap) spawnBrick(true); else { spawnAcc = Math.min(spawnAcc, 1); break; } }
   }
+  let extra = idleCount() - cap;
+  for (let i = loose.length - 1; i >= 0 && extra > 0; i--) { const q = loose[i]; if (q.st === 'idle') { q.st = 'out'; q.out = -Math.random() * 0.4; extra--; } }
   // integrate + write instances
   let w = 0; const mesh = looseMesh;
   for (let i = 0; i < loose.length; i++) {
@@ -1361,11 +1402,29 @@ function updateOrb(dt, t) {
 /* ============================================================
    TERRAIN — what the town sits beside: river | hill | neighbor town | road
    ============================================================ */
-const TERR = { kind: 'none', seed: 1, pts: [], width: 0, hill: null, nb: null, forest: null, bridge: null, mesh: null, fake: [], links: [] };
-const TERR_KINDS = ['river', 'hill', 'neighbor', 'road', 'forest'];
-const TERR_LABEL = { river: 'a river', hill: 'a hill', neighbor: 'another town', road: 'a road', forest: 'a forest', none: 'open meadow' };
+const TERR = { kind: 'none', seed: 1, pts: [], width: 0, hill: null, nb: null, forest: null, farm: null, bridge: null, mesh: null, fake: [], links: [], plaza: null, conn: [], connLinks: [] };
+const TERR_KINDS = ['river', 'hill', 'neighbor', 'road', 'forest', 'farmland'];
+const TERR_LABEL = { river: 'a river', hill: 'a hill', neighbor: 'another town', road: 'a road', forest: 'a forest', farmland: 'farmland', none: 'open meadow' };
+function plazaParams(seed) {
+  const r = mulberry32((seed | 0) + 11), square = r() < 0.5, size = square ? 7.5 + r() * 2 : 8.5 + r() * 2.5, rot = r() * Math.PI, ang = r() * TAU, dist = r() * 0.42 * size;
+  return { shape: square ? 'square' : 'round', size, rot: square ? rot : 0, first: [Math.cos(ang) * dist, Math.sin(ang) * dist], ar: (square ? size * 1.1 : size) - 1 };
+}
+function applyPlaza() {
+  const P0 = TERR.plaza; plaza.geometry.dispose();
+  if (P0.shape === 'square') { plaza.geometry = new THREE.PlaneGeometry(P0.size * 2, P0.size * 2); setLit(plaza, 'plazaSq'); plaza.rotation.set(-Math.PI / 2, 0, P0.rot); }
+  else { plaza.geometry = new THREE.CircleGeometry(P0.size, 56); setLit(plaza, 'plaza'); plaza.rotation.set(-Math.PI / 2, 0, 0); }
+  plaza.updateMatrixWorld(true);
+}
+const _pd = new V3();
+function plazaDist(x, z) {   // signed distance to the plaza edge (negative = inside)
+  const P0 = TERR.plaza; if (!P0) return 1e9;
+  if (P0.shape === 'round') return Math.hypot(x, z) - P0.size;
+  _pd.set(x, 0.012, z); plaza.worldToLocal(_pd);
+  const qx = Math.abs(_pd.x) - P0.size, qy = Math.abs(_pd.y) - P0.size; return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0);
+}
 function terrainInit(kind, seed) {
-  Object.assign(TERR, { kind, seed, pts: [], width: 0, hill: null, nb: null, forest: null, bridge: null, links: [] });
+  Object.assign(TERR, { kind, seed, pts: [], width: 0, hill: null, nb: null, forest: null, farm: null, bridge: null, links: [], plaza: plazaParams(seed) }); applyPlaza();
+  const par = TERR.plaza.ar;
   const rng = mulberry32(seed), a0 = rng() * TAU, ux = Math.cos(a0), uz = Math.sin(a0), tx = -uz, tz = ux, phi = rng() * 6, vr = mulberry32(seed + 5);
   const link = (ax, az, bx, bz, ar, br) => TERR.links.push({ a: [ax, az], b: [bx, bz], ar, br });
   if (kind === 'river' || kind === 'road') {
@@ -1373,25 +1432,36 @@ function terrainInit(kind, seed) {
     for (let sd = -170; sd <= 170; sd += 5) { const w = Math.sin(sd * 0.045 + phi) * amp + Math.sin(sd * 0.11 + phi * 2) * 1.6; TERR.pts.push([ux * (d + w) + tx * sd, uz * (d + w) + tz * sd]); }
     TERR.width = kind === 'river' ? 8 : 4.8;
     let bi = 0, bd = 1e9; TERR.pts.forEach((q, i) => { const dd = Math.hypot(q[0], q[1]); if (dd < bd) { bd = dd; bi = i; } });
-    if (kind === 'road') link(0, 0, TERR.pts[bi][0], TERR.pts[bi][1], CONFIG.plazaRadius - 1, 2.2);
+    if (kind === 'road') link(0, 0, TERR.pts[bi][0], TERR.pts[bi][1], par, 2.2);
     else if (vr() < 0.8) {   // random bridge over the river, near the town
       const i = clamp(bi + Math.round((vr() - 0.5) * 14), 4, TERR.pts.length - 5), q = TERR.pts[i], a = TERR.pts[i - 1], c = TERR.pts[i + 1];
       let dx = c[0] - a[0], dz = c[1] - a[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
       let nx = -dz, nz = dx; if (nx * q[0] + nz * q[1] < 0) { nx = -nx; nz = -nz; }
       const e = TERR.width / 2 + 3.5;
       TERR.bridge = { x: q[0], z: q[1], nx, nz, tx: dx, tz: dz, ry: Math.atan2(-nz, nx) };
-      link(0, 0, q[0] - nx * e, q[1] - nz * e, CONFIG.plazaRadius - 1, 0.5);
+      link(0, 0, q[0] - nx * e, q[1] - nz * e, par, 0.5);
       link(q[0] - nx * e, q[1] - nz * e, q[0] + nx * (e + 3), q[1] + nz * (e + 3), 0, 0);
     }
   } else if (kind === 'hill') {
     const h = TERR.hill = { x: ux * 33, z: uz * 33, r: 15, h: 10, ph: vr() * 6, dir: vr() < 0.5 ? 1 : -1, turns: 1.1 + vr() * 0.8, path: vr() < 0.9, lookout: vr() < 0.85, style: vr() < 0.5 ? 0 : 1 };
     if (!h.path && !h.lookout) h.path = true;
     h.a0 = Math.atan2(-h.z, -h.x);
-    if (h.path) { const sx = h.x + Math.cos(h.a0) * h.r * 0.95, sz = h.z + Math.sin(h.a0) * h.r * 0.95; link(0, 0, sx, sz, CONFIG.plazaRadius - 1, 0.3); }
-  } else if (kind === 'neighbor') { TERR.nb = { x: ux * 46, z: uz * 46, r: 16, ux, uz }; link(0, 0, TERR.nb.x, TERR.nb.z, CONFIG.plazaRadius - 1, 6); }
+    if (h.path) { const sx = h.x + Math.cos(h.a0) * h.r * 0.95, sz = h.z + Math.sin(h.a0) * h.r * 0.95; link(0, 0, sx, sz, par, 0.3); }
+  } else if (kind === 'neighbor') { TERR.nb = { x: ux * 46, z: uz * 46, r: 16, ux, uz }; link(0, 0, TERR.nb.x, TERR.nb.z, par, 6); }
+  else if (kind === 'farmland') {
+    const F = TERR.farm = { x: ux * 40, z: uz * 40, ux, uz, tx, tz, r: 25, plots: [] };
+    const cells = []; for (const bq of [-6.5, 6.5]) for (const aq of [-15, 0, 15]) cells.push([aq, bq]);
+    for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(vr() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
+    const crops = ['wheat', 'green', 'plow', 'lav', 'wheat', 'green'];
+    cells.forEach((c, i) => {
+      const a = c[0] + (vr() - 0.5) * 1.5, b = c[1] + (vr() - 0.5) * 1.5, kindP = i === 0 ? 'pasture' : i === 1 ? 'yard' : (i === 2 && vr() < 0.5 ? 'pasture' : crops[i]);
+      F.plots.push({ x: F.x + tx * a + ux * b, z: F.z + tz * a + uz * b, w: 12 + vr() * 2.5, d: 9 + vr() * 2, kind: kindP, ry: Math.atan2(-tz, tx) });
+    });
+    link(0, 0, F.x - ux * 20, F.z - uz * 20, par, 0.3);
+  }
   else if (kind === 'forest') {
     const f = TERR.forest = { x: ux * 34, z: uz * 34, r: 20, ph: phi, ux, uz };
-    link(0, 0, f.x - ux * f.r * 0.9, f.z - uz * f.r * 0.9, CONFIG.plazaRadius - 1, 0.3);
+    link(0, 0, f.x - ux * f.r * 0.9, f.z - uz * f.r * 0.9, par, 0.3);
   }
 }
 function hillY(x, z) {
@@ -1404,13 +1474,15 @@ function distToPts(x, z) {
   for (let i = 0; i < P.length - 1; i++) { const d = distToSeg(x, z, P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]); if (d < m) m = d; }
   return m;
 }
-function terrainBlocked(x, z, r) {
+function terrainBlocked(x, z, r) { for (const c of TERR.conn) if (Math.hypot(x - c.x, z - c.z) < c.r + r) return true; return terrainBlockedFeat(x, z, r); }
+function terrainBlockedFeat(x, z, r) {
   switch (TERR.kind) {
     case 'river': return distToPts(x, z) < TERR.width / 2 + r + 0.8;
     case 'road': return distToPts(x, z) < TERR.width / 2 + r + 0.6;
     case 'hill': return Math.hypot(x - TERR.hill.x, z - TERR.hill.z) < TERR.hill.r + r;
     case 'neighbor': return Math.hypot(x - TERR.nb.x, z - TERR.nb.z) < TERR.nb.r + r + 1;
     case 'forest': return Math.hypot(x - TERR.forest.x, z - TERR.forest.z) < forestR(x, z) + r;
+    case 'farmland': return Math.hypot(x - TERR.farm.x, z - TERR.farm.z) < TERR.farm.r + r;
   }
   return false;
 }
@@ -1496,7 +1568,25 @@ function buildTerrain() {
   } else if (k === 'hill') {
     geos.push(hillGeo()); if (TERR.hill.lookout) lookoutGeos(geos);
   }
+  if (k === 'farmland') {
+    const cropCol = { wheat: ['#e8c75a', '#d9b645', 0.3], green: ['#79cf62', '#68be52', 0.22], plow: ['#a9794f', '#8f6340', 0.12], lav: ['#b89ae8', '#a384dc', 0.28] };
+    for (const pl of TERR.farm.plots) {
+      geos.push(mk(box(pl.w + 0.6, 0.05, pl.d + 0.6), '#8a6a45', { x: pl.x, y: 0.025, z: pl.z, ry: pl.ry }));
+      if (pl.kind === 'pasture') { geos.push(mk(box(pl.w, 0.07, pl.d), '#9fdc7f', { x: pl.x, y: 0.04, z: pl.z, ry: pl.ry })); continue; }
+      if (pl.kind === 'yard') { geos.push(mk(box(pl.w, 0.07, pl.d), '#dcc9a0', { x: pl.x, y: 0.04, z: pl.z, ry: pl.ry })); continue; }
+      const cc = cropCol[pl.kind], n = Math.floor(pl.d / 0.85), c = Math.cos(pl.ry), sn = Math.sin(pl.ry);
+      for (let i = 0; i < n; i++) {
+        const lz = -pl.d / 2 + 0.5 + i * (pl.d - 1) / Math.max(1, n - 1);
+        geos.push(mk(box(pl.w - 0.8, cc[2], 0.5), cc[i & 1 ? 1 : 0], { x: pl.x + lz * sn, y: cc[2] / 2 + 0.06, z: pl.z + lz * c, ry: pl.ry }));
+      }
+    }
+  }
   if (geos.length) { TERR.mesh = new THREE.Mesh(mergeGeos(geos), litMat('vc')); TERR.mesh.userData.lk = 'vc'; shadowFlags(TERR.mesh, false, true); TERR.mesh.frustumCulled = false; scene.add(TERR.mesh); }
+  buildConnected();
+  if (k === 'farmland') {
+    const yard = TERR.farm.plots.find(q => q.kind === 'yard'), r2 = mulberry32(TERR.seed + 41), b = { id: -1, type: 'barn', lot: [yard.x, yard.z], seed: (TERR.seed * 3) | 0, colors: { wall: Math.floor(r2() * 5), wall2: Math.floor(r2() * 5), roof: Math.floor(r2() * 5) }, custom: false, salt: 0 };
+    b.name = 'Farm'; buildBuildingObject(b, false); b.rt.mesh.userData.cast = false; TERR.fake.push(b);
+  }
   if (k === 'neighbor') {
     const nb = TERR.nb, rng = mulberry32(TERR.seed + 99), pts = [], types = Object.keys(CONFIG.buildings);
     for (let t = 0; t < 300 && pts.length < 6; t++) { const a = rng() * TAU, r = Math.sqrt(rng()) * (nb.r - 4), x = nb.x + Math.cos(a) * r, z = nb.z + Math.sin(a) * r; if (pts.every(q => Math.hypot(q[0] - x, q[1] - z) > 11)) pts.push([x, z]); }
@@ -1507,7 +1597,8 @@ function buildTerrain() {
   }
 }
 function addTerrainDecor() {
-  const k = TERR.kind; if (k === 'none') return;
+  const k = TERR.kind; TERR.connLinks.forEach((l, i) => streetStones(l.a[0], l.a[1], l.ar, l.b[0], l.b[1], l.br, TERR.seed + 77 + i, false, false));
+  if (k === 'none') return;
   const rng = mulberry32(TERR.seed + 7), dens = Q.garden / 1.6, tree = (x, z, y) => { const sc = 0.8 + rng() * 0.6; lsAdd('tree', x, y || 0, z, rng() * 3, sc, sc, sc, PC.foliage[Math.floor(rng() * 3)], 0, false); };
   if (k === 'river' || k === 'road') {
     const P = TERR.pts;
@@ -1529,6 +1620,20 @@ function addTerrainDecor() {
     const nb = TERR.nb;
     for (let i = 0; i < 18; i++) { const a = rng() * TAU, r = Math.sqrt(rng()) * (nb.r + 2), x = nb.x + Math.cos(a) * r, z = nb.z + Math.sin(a) * r; if (TERR.fake.every(f => Math.hypot(f.lot[0] - x, f.lot[1] - z) > f.rt.R + 1.5)) tree(x, z); }
     TERR.fake.forEach((f, i) => { if (!i) return; let best = null, bd = 1e9; for (let j = 0; j < i; j++) { const d = Math.hypot(f.lot[0] - TERR.fake[j].lot[0], f.lot[1] - TERR.fake[j].lot[1]); if (d < bd) { bd = d; best = TERR.fake[j]; } } if (best) streetStones(f.lot[0], f.lot[1], f.rt.R, best.lot[0], best.lot[1], best.rt.R, f.seed, false, false); });
+  } else if (k === 'farmland') {
+    const F = TERR.farm, cow = [new C3('#ffffff'), new C3('#ffffff'), new C3('#e8b98a'), new C3('#cfa57a')];
+    for (const pl of F.plots) {
+      const c = Math.cos(pl.ry), sn = Math.sin(pl.ry), wp = (lx, lz) => [pl.x + lx * c + lz * sn, pl.z - lx * sn + lz * c];
+      if (pl.kind === 'pasture') {
+        const per = [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]];
+        per.forEach((e, si) => { const x0 = e[0] * pl.w / 2, z0 = e[1] * pl.d / 2, x1 = e[2] * pl.w / 2, z1 = e[3] * pl.d / 2, len = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(len / 0.9); for (let i = 0; i < n; i++) { if (si === 0 && i > n / 2 - 2 && i < n / 2 + 2) continue; const t = (i + 0.5) / n, q = wp(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t); lsAdd('fence', q[0], 0, q[1], pl.ry + (x1 === x0 ? Math.PI / 2 : 0), 1, 1, 1, null, 0, false); } });
+        const nc = 5 + Math.floor(rng() * 4);
+        for (let i = 0; i < nc; i++) { const q = wp((rng() - 0.5) * (pl.w - 2.5), (rng() - 0.5) * (pl.d - 2.5)), sc = 1.15 + rng() * 0.3; lsAdd('cow', q[0], 0, q[1], rng() * TAU, sc, sc, sc, cow[Math.floor(rng() * 4)], 0, false); }
+      } else if (pl.kind === 'yard') {
+        for (let i = 0; i < 5; i++) { const q = wp((rng() - 0.5) * (pl.w - 3), (rng() - 0.5) * (pl.d - 3)), sc = 0.9 + rng() * 0.3; if (Math.hypot(q[0] - pl.x, q[1] - pl.z) > 4.5) lsAdd('hay', q[0], 0, q[1], rng() * 3, sc, sc, sc, null, 0, false); }
+      } else if (rng() < 0.6) { const q = wp(pl.w / 2 + 0.6, (rng() - 0.5) * pl.d); lsAdd('hay', q[0], 0, q[1], rng() * 3, 1, 1, 1, null, 0, false); }
+    }
+    for (let i = 0; i < 14; i++) { const a = rng() * TAU, rr = F.r + 1 + rng() * 5; tree(F.x + Math.cos(a) * rr, F.z + Math.sin(a) * rr); }
   } else if (k === 'forest') {
     const f = TERR.forest, N = 260, cm = [new C3('#ff8f8f'), new C3('#e8b0ff'), new C3('#ffc47a')];
     lsAdd('lush', f.x, 0.012, f.z, 0, f.r * 1.1, 1, f.r * 1.1, null, 0, false);
@@ -1563,6 +1668,11 @@ const LSG = {
   lamp: () => mergeGeos([mk(cyl(0.04, 0.06, 1.5, 5), '#6b6275', { y: 0.75 }), mk(box(0.24, 0.26, 0.24), '#ffe08a', { y: 1.62 }), mk(cyl(0.02, 0.2, 0.14, 4), '#6b6275', { y: 1.82 })]),
   stone: () => mergeGeos([mk(cyl(0.28, 0.3, 0.05, 6), '#ffffff', { y: 0.025 })]),
   bench: () => mergeGeos([mk(box(1.1, 0.12, 0.42), '#ffffff', { y: 0.42 }), mk(box(0.12, 0.4, 0.36), '#ffffff', { x: -0.45, y: 0.2 }), mk(box(0.12, 0.4, 0.36), '#ffffff', { x: 0.45, y: 0.2 })]),
+  cow: () => mergeGeos([mk(box(0.95, 0.5, 0.46), '#ffffff', { y: 0.62 }), mk(box(0.32, 0.32, 0.34), '#ffffff', { x: 0.62, y: 0.78 }), mk(box(0.14, 0.12, 0.2), '#ffc8c8', { x: 0.82, y: 0.72 }),
+    mk(box(0.06, 0.14, 0.06), '#f5f0e0', { x: 0.6, y: 1.02, z: 0.12 }), mk(box(0.06, 0.14, 0.06), '#f5f0e0', { x: 0.6, y: 1.02, z: -0.12 }),
+    mk(box(0.12, 0.4, 0.12), '#ffffff', { x: 0.32, y: 0.2, z: 0.15 }), mk(box(0.12, 0.4, 0.12), '#ffffff', { x: 0.32, y: 0.2, z: -0.15 }), mk(box(0.12, 0.4, 0.12), '#ffffff', { x: -0.32, y: 0.2, z: 0.15 }), mk(box(0.12, 0.4, 0.12), '#ffffff', { x: -0.32, y: 0.2, z: -0.15 }),
+    mk(box(0.05, 0.34, 0.05), '#3a3434', { x: -0.5, y: 0.62 }), mk(box(0.34, 0.3, 0.48), '#3b3535', { x: -0.1, y: 0.68 }), mk(box(0.24, 0.26, 0.47), '#3b3535', { x: 0.3, y: 0.58 })]),
+  hay: () => mergeGeos([mk(cyl(0.5, 0.5, 0.85, 10), '#ffffff', { y: 0.5, rz: Math.PI / 2 }), mk(cyl(0.52, 0.52, 0.1, 10), '#c9a23c', { y: 0.5, x: 0.2, rz: Math.PI / 2 })]),
   pot: () => mergeGeos([mk(cyl(0.14, 0.1, 0.22, 6), '#d98c62', { y: 0.11 }), mk(ico(0.16, 0), '#7fc47a', { y: 0.3 }), mk(ico(0.07, 0), '#ff9bb5', { y: 0.46 })])
 };
 const LS_CAST = { tree: 1, lamp: 1, bench: 1 };
@@ -1595,7 +1705,9 @@ function lsWrite(t, i, f) {
 function lsAdd(name, x, y, z, ry, sx, sy, sz, color, delay, animate) {
   const t = lsType(name); lsEnsure(t, t.n + 1); const i = t.n++;
   t.data[i] = { x, y, z, ry, sx, sy, sz, delay: delay || 0, age: 0 }; t.mesh.setColorAt(i, color || _c.set(0xffffff)); t.mesh.instanceColor.needsUpdate = true; t.mesh.count = t.n;
-  if (animate) { LS.anim.push([t, i]); lsWrite(t, i, 0); } else lsWrite(t, i, 1);
+  if (animate === 'hold') lsWrite(t, i, 0);
+  else if (animate) { LS.anim.push([t, i]); lsWrite(t, i, 0); } else lsWrite(t, i, 1);
+  return [t, i];
 }
 function lsUpdate(dt) {
   for (let k = LS.anim.length - 1; k >= 0; k--) {
@@ -1609,14 +1721,21 @@ function lsDisposeAll() { for (const k in LS.types) { const t = LS.types[k]; if 
 function updateBlobVisibility() { const t = LS.types.blob; if (t && t.mesh) t.mesh.visible = !Q.shadow; scene.traverse(o => { if (o.userData && o.userData.isBlob) o.visible = !Q.shadow; }); }
 
 function addPlaza() {
-  const R = CONFIG.plazaRadius - 1.0;
-  for (let i = 0; i < 8; i++) { const a = (22.5 + i * 45) * Math.PI / 180; lsAdd('bench', Math.cos(a) * R, 0, Math.sin(a) * R, -a + Math.PI / 2, 1, 1, 1, PC.stone, 0, false); }
+  const P0 = TERR.plaza, f = P0.first, nearFirst = (x, z) => Math.hypot(x - f[0], z - f[1]) < 5.4;
+  const bench = (x, z, ry) => { if (!nearFirst(x, z)) lsAdd('bench', x, 0, z, ry, 1, 1, 1, PC.stone, 0, false); };
+  if (P0.shape === 'round') { const R = P0.size - 1; for (let i = 0; i < 8; i++) { const a = (22.5 + i * 45) * Math.PI / 180; bench(Math.cos(a) * R, Math.sin(a) * R, -a + Math.PI / 2); } return; }
+  const wp = (lx, ly) => { _pd.set(lx, ly, 0); plaza.localToWorld(_pd); return [_pd.x, _pd.z]; }, sz = P0.size - 0.9;
+  for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) for (const off of [-0.45, 0.45]) {
+    const lx = dx ? dx * sz : off * P0.size, ly = dy ? dy * sz : off * P0.size, tx = dx ? 0 : 1, ty = dx ? 1 : 0, a = wp(lx, ly), b = wp(lx + tx, ly + ty);
+    bench(a[0], a[1], Math.atan2(-(b[1] - a[1]), b[0] - a[0]));
+  }
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) { const q = wp(sx * (P0.size - 0.7), sy * (P0.size - 0.7)); if (!nearFirst(q[0], q[1])) lsAdd('lamp', q[0], 0, q[1], 0, 1, 1, 1, null, 0, false); }
 }
 const rotXZ = (x, z, yaw) => [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
 
 function genGarden(b, animate) {
   const L = layoutFor(b), rng = mulberry32(b.seed * 7 + 13), cx = lotPos(b.lot).x, cz = lotPos(b.lot).z, R = L.R, yaw = yawOf(b, L.cfg.role);
-  const d = Q.garden / 1.6, first = Math.hypot(cx, cz) < 0.1, shop = L.cfg.role === 'shop';
+  const d = Q.garden / 1.6, first = plazaDist(cx, cz) < 0, shop = L.cfg.role === 'shop';
   const corr = connectionsOf(b).map(c => Math.atan2(c.z - cz, c.x - cx)); if (TERR.link0 && first) corr.length = 0;
   const nearC = a => corr.some(c => Math.abs(wrapAng(a - c)) < 0.4);
   const placed = []; let order = 0;
@@ -1666,7 +1785,7 @@ function lsNear(x, z, r) {
   return false;
 }
 /* cobblestone street between two circular footprints (gentle curve, skips trees/water) */
-function streetStones(ax, az, ar, bx, bz, br, seed, animate, checkTerr) {
+function streetStones(ax, az, ar, bx, bz, br, seed, animate, checkTerr, out) {
   const rng = mulberry32(seed), dx = bx - ax, dz = bz - az, dist = Math.hypot(dx, dz); if (dist < ar + br + 1) return;
   const ux = dx / dist, uz = dz / dist, sA = ar * 0.92 + 0.15, sB = dist - (br * 0.92 + 0.15), len = sB - sA, n = Math.floor(len / 0.72); if (n < 1) return;
   const bend = (rng() - 0.5) * Math.min(5, dist * 0.28), px = -uz, pz = ux;
@@ -1674,18 +1793,32 @@ function streetStones(ax, az, ar, bx, bz, br, seed, animate, checkTerr) {
     const t = (i + 0.5) / n, sd = sA + len * t, off = bend * Math.sin(Math.PI * t) + (rng() - 0.5) * 0.18;
     const x = ax + ux * sd + px * off, z = az + uz * sd + pz * off, sc = 1.1 + rng() * 0.35, ry = rng() * 3, col = new C3('#cdbfa6').multiplyScalar(0.96 + rng() * 0.08);
     if (lsNear(x, z, 0.85) || (checkTerr && terrainBlocked(x, z, -0.8))) continue;
-    lsAdd('stone', x, 0.01, z, ry, sc, 1, sc, col, animate ? 0.4 + i * 0.05 : 0, animate);
+    const r = lsAdd('stone', x, 0.01, z, ry, sc, 1, sc, col, animate === 'hold' ? 0 : (animate ? 0.4 + i * 0.05 : 0), animate); if (out) out.push(r);
   }
 }
 function addPaths(b, animate) {
   const q = lotPos(b.lot), ra = layoutFor(b).R;
   for (const c of connectionsOf(b)) streetStones(q.x, q.z, ra, c.x, c.z, layoutFor(c.o).R, b.seed + c.o.seed, animate, true);
 }
-function growGarden(b) { genGarden(b, true); addPaths(b, true); }
+function setupSitePaths() {   // streets grow toward a new building as it is built
+  if (!site) return; site.pathSets = []; site.pathRev = [];
+  for (const c of connectionsOf(site.rec)) { const out = []; streetStones(site.x, site.z, site.R, c.x, c.z, layoutFor(c.o).R, site.rec.seed + c.o.seed, 'hold', true, out); out.reverse(); site.pathSets.push(out); site.pathRev.push(0); }
+  revealPaths(site.placed / site.layout.slots.length, true);
+}
+function revealPaths(frac, instant) {
+  if (!site || !site.pathSets) return; frac = Math.min(1, frac * 1.2);
+  site.pathSets.forEach((set, k) => {
+    const n = Math.floor(frac * set.length + 1e-6);
+    for (let i = site.pathRev[k]; i < n; i++) { const t = set[i][0], d = t.data[set[i][1]]; if (!d) continue; if (instant) lsWrite(t, set[i][1], 1); else { d.age = 0; d.delay = 0; LS.anim.push([t, set[i][1]]); } }
+    site.pathRev[k] = Math.max(site.pathRev[k], n);
+  });
+}
+function growGarden(b) { revealPaths(1, false); genGarden(b, true); }
 function rebuildLandscape() {
   lsClear(); addPlaza();
   S.buildings.forEach(b => { if (!b.rt) return; genGarden(b, false); addPaths(b, false); });
   addTerrainDecor();
+  if (site && site.state !== 'celebrate') setupSitePaths();
 }
 
 /* ============================================================
@@ -1751,6 +1884,7 @@ cv.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) { p.orbit = true; return; }
   if (S.mode === 'photo') { if (e.pointerType === 'mouse') p.orbit = true; return; }
   if (S.explore) { p.pan = true; return; }
+  if (!site) return;
   Audio.init(); if (!hintDismissed) { hintDismissed = true; $('hint').style.display = 'none'; } hold.active = true; hold.id = e.pointerId; orb.sx = e.clientX; orb.sy = e.clientY;
   if (cam.away) camFocusSite(1.0);
 });
@@ -1887,6 +2021,9 @@ const ICONS = {
   tag: svgI('<rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="#ffd36e"/><path d="M9 13.5h14M9 18.5h8" stroke-width="2.4"/>'),
   dice: svgI('<rect x="3.5" y="3.5" width="25" height="25" rx="7.5" fill="#fff3dc"/><circle cx="11" cy="11" r="2.3" fill="#ff8fa8" stroke="none"/><circle cx="21" cy="11" r="2.3" fill="#58b8f0" stroke="none"/><circle cx="16" cy="16" r="2.3" fill="#ffd36e" stroke="none"/><circle cx="11" cy="21" r="2.3" fill="#6fd49c" stroke="none"/><circle cx="21" cy="21" r="2.3" fill="#b79cf0" stroke="none"/>'),
   pencil: svgI('<path d="M6 26l1.6-6.4L21 6.2l4.8 4.8L12.4 24.4z" fill="#ffd36e"/><path d="M19 8.2l4.8 4.8" stroke-width="1.8"/><path d="M6 26l1.6-6.4 4.8 4.8z" fill="#ff8fa8"/>'),
+  plus: svgI('<circle cx="16" cy="16" r="12.5" fill="#6fd49c"/><path d="M16 9.5v13M9.5 16h13" stroke="#fff3dc" stroke-width="3.2"/>'),
+  link: svgI('<rect x="2.5" y="11" width="15" height="10" rx="5" fill="#9fd3ff"/><rect x="14.5" y="11" width="15" height="10" rx="5" fill="#ffd36e"/>'),
+  trash: svgI('<path d="M7 10h18l-1.6 17H8.6z" fill="#ff8fa8"/><rect x="5" y="6.5" width="22" height="4" rx="2" fill="#ffd36e"/><path d="M13 5h6"/><path d="M13 14v9M19 14v9" stroke="#fff3dc" stroke-width="2"/>'),
   rotL: svgI('<path d="M22 7.5A10.5 10.5 0 1 0 26.5 18" stroke-width="3.2" stroke="#6a4d2a"/><path d="M26.8 4.5v9.5h-9.5z" fill="#ff8fa8"/>'),
   rotR: svgI('<g transform="translate(32 0) scale(-1 1)"><path d="M22 7.5A10.5 10.5 0 1 0 26.5 18" stroke-width="3.2" stroke="#6a4d2a"/><path d="M26.8 4.5v9.5h-9.5z" fill="#ff8fa8"/></g>'),
   finger: svgI('<circle cx="16" cy="3.6" r="2.4" stroke="#ff9a4a" stroke-width="1.7"/><rect x="12.8" y="5.5" width="6.4" height="17" rx="3.2" fill="#ffd2a8"/><rect x="8" y="16" width="16" height="12.5" rx="5.5" fill="#ffd2a8"/><ellipse cx="7.6" cy="21.5" rx="2.6" ry="3.6" transform="rotate(-18 7.6 21.5)" fill="#ffd2a8"/><path d="M14.2 22.5v3.5M18 22.5v3.5" stroke-width="1.5"/>')
@@ -1909,7 +2046,7 @@ modalEl.addEventListener('click', e => { if (e.target === modalEl || (e.target.c
 let menuOpen = false, hintDismissed = false;
 function refreshUI() {
   $('townName').textContent = S.townName; const n = S.buildings.length;
-  $('count').innerHTML = ic('home', 'width:16px;height:16px;margin:0 3px 0 0;vertical-align:middle') + n;
+  $('count').innerHTML = ic('home', 'width:16px;height:16px;margin:0 3px 0 0;vertical-align:middle') + n + '/' + townCap();
   $('hint').style.display = n === 0 && S.mode === 'play' && !hintDismissed ? 'block' : 'none';
   $('btnSound').innerHTML = ic(S.settings.sound ? 'soundOn' : 'soundOff', 'width:32px;height:32px;margin:0');
 }
@@ -1950,7 +2087,7 @@ function setExplore(on) {
 $('btnExplore').onclick = () => setExplore(!S.explore);
 function setPaused(p) { S.paused = p; $('paused').style.display = p ? 'flex' : 'none'; if (p) hold.active = false; }
 $('btnPause').onclick = () => setPaused(true); $('btnResume').onclick = () => setPaused(false);
-$('btnPhoto').onclick = enterPhoto; $('pbExit').onclick = exitPhoto; $('pbShutter').onclick = shutter;
+$('btnPhoto').onclick = enterPhoto; $('dnTowns').onclick = () => openTowns(); $('dnNew').onclick = () => openNewTownSheet(); $('pbExit').onclick = exitPhoto; $('pbShutter').onclick = shutter;
 $('pbMode').onclick = () => { S.photoSub = S.photoSub === 'building' ? 'town' : 'building'; setPbMode(); photoFocus(); };
 $('pbCap').onclick = () => { S.settings.caption = !S.settings.caption; setPbCap(); saveSoon(); };
 const ROLE_ICON = { home: ic('home'), shop: ic('shop'), landmark: ic('castle') };
@@ -1964,15 +2101,15 @@ function focusBuilding(b) { S.selected = b.id; updateLabelText(); cam.away = tru
 function menuHTML() {
   const th = CONFIG.palettes.map((p, i) => '<button class="pill' + (i === S.themeIdx ? ' on' : '') + '" data-theme="' + i + '"><span class="sw" style="background:' + p.walls[0] + '"></span><span class="sw" style="background:' + p.walls[1] + '"></span>' + esc(p.name) + '</button>').join('');
   const qs = ['auto', 'LOW', 'MEDIUM', 'HIGH'].map(q => '<button class="pill' + (S.settings.quality === q ? ' on' : '') + '" data-q="' + q + '">' + (q === 'auto' ? 'Auto' : CONFIG.quality[q].label) + '</button>').join('');
-  return '<h3>' + esc(GAME_NAME) + '</h3><h4>Palette</h4><div class="row">' + th + '</div><h4>Quality (now: ' + CONFIG.quality[tierName].label + ')</h4><div class="row">' + qs + '</div><h4>Town sits beside ' + esc(TERR_LABEL[TERR.kind] || '') + '</h4><div class="row"><button class="pill t-butter" data-act="rename">' + ic('pencil') + 'Rename town</button><button class="pill t-peach" data-act="reset">Reset town…</button><button class="pill" data-close="1">Close</button></div>';
+  return '<h3>' + esc(GAME_NAME) + '</h3><h4>Palette</h4><div class="row">' + th + '</div><h4>Quality (now: ' + CONFIG.quality[tierName].label + ')</h4><div class="row">' + qs + '</div><h4>Town sits beside ' + esc(TERR_LABEL[TERR.kind] || '') + '</h4><div class="row"><button class="pill t-butter" data-act="rename">' + ic('pencil') + 'Rename town</button><button class="pill t-sky" data-act="towns">' + ic('town') + 'My Towns</button><button class="pill t-mint" data-act="newtown">' + ic('plus') + 'New town</button><button class="pill" data-close="1">Close</button></div><div class="ver">' + esc(GAME_NAME) + ' v' + VERSION + ' · ' + VERSION_DATE + '</div>';
 }
 function bindMenu(el) {
   el.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { setTheme(+b.dataset.theme); refreshMenuIfOpen(); saveSoon(); });
   el.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; if (b.dataset.q !== 'auto' && b.dataset.q !== tierName) applyQuality(b.dataset.q); perf.slow = perf.fast = 0; refreshMenuIfOpen(); saveSoon(); });
   const rn = el.querySelector('[data-act="rename"]');
   if (rn) rn.onclick = () => { closeModal(); nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen()); };
-  const r = el.querySelector('[data-act="reset"]');
-  if (r) r.onclick = () => { modalEl.firstChild.innerHTML = '<h3>Start a new town?</h3><div>This deletes every building. It can\'t be undone. Where should the new town sit?</div><div class="row">' + [['river', 'A river'], ['hill', 'A hill'], ['neighbor', 'Another town'], ['road', 'A road'], ['forest', 'A forest'], ['random', 'Surprise me']].map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" id="rsNo">Keep my town</button></div>'; modalEl.firstChild.querySelectorAll('[data-setting]').forEach(b => b.onclick = () => { closeModal(); resetTown(b.dataset.setting); }); $('rsNo').onclick = () => { closeModal(); }; };
+  el.querySelectorAll('[data-act="towns"]').forEach(x => x.onclick = () => openTowns());
+  el.querySelectorAll('[data-act="newtown"]').forEach(x => x.onclick = () => openNewTownSheet());
 }
 function refreshMenuIfOpen() { if (menuOpen && modalOpen) { modalEl.firstChild.innerHTML = menuHTML(); bindMenu(modalEl.firstChild); } }
 $('btnMenu').onclick = () => { openModal(menuHTML(), bindMenu); menuOpen = true; };
@@ -1981,62 +2118,227 @@ function setTheme(i, initial) {
   S.themeIdx = i; P = CONFIG.palettes[i]; PC = compilePalette(P);
   scene.background.copy(PC.sky); scene.fog.color.copy(PC.sky); hemi.color.copy(PC.hemiSky); hemi.groundColor.copy(PC.hemiGround); sun.color.copy(PC.sun); amb.color.copy(PC.hemiSky).lerp(PC.hemiGround, 0.15);
   document.querySelector('meta[name=theme-color]').setAttribute('content', P.sky);
-  litMat('ground').color.copy(PC.ground); litMat('lush').color.copy(PC.lush); litMat('plaza').color.copy(PC.plaza);
+  litMat('ground').color.copy(PC.ground); litMat('lush').color.copy(PC.lush); litMat('plaza').color.copy(PC.plaza); litMat('plazaSq').color.copy(PC.plaza);
   makeHills();
   loose.forEach(b => randBrickColor(b.col));
   if (!initial) {
     S.buildings.forEach(b => { if (b.rt && b.rt.glass) { b.rt.glass.material.color.copy(PC.glass); if (b.rt.signCanvas) setBuildingName(b, b.name, b.custom); } });
     rebuildAllBuildings(); rebuildLandscape();
-    if (site) { site.body.remove(site.scaffold); site.scaffold = makeScaffold(site.layout); site.body.add(site.scaffold); for (let i = 0; i < site.placed; i++) setPlaced(i, false); }
+    if (site) { site.body.remove(site.scaffold); site.scaffold = makeScaffold(site.layout, site.scaffH); site.body.add(site.scaffold); for (let i = 0; i < site.placed; i++) setPlaced(i, false); }
   }
 }
 
 /* ============================================================
-   PERSISTENCE
+   TOWN SIZE CAP (30-40 buildings per town, seeded)
+   ============================================================ */
+function capFor(setting, n) { return Math.max(30 + Math.floor(mulberry32(((setting && setting.seed) | 0) + 13)() * 11), n | 0); }
+function townCap() { return capFor(S.setting, S.buildings.length); }
+function camFocusTown(dur) {
+  cam.zoomT = 1; cam.away = false;
+  if (!S.buildings.length) { camFocus(0, 1, 0, 14, 4, dur); return; }
+  let sx = 0, sz = 0; S.buildings.forEach(b => { sx += b.rt.x; sz += b.rt.z; }); sx /= S.buildings.length; sz /= S.buildings.length;
+  let r = 0; S.buildings.forEach(b => { r = Math.max(r, Math.hypot(b.rt.x - sx, b.rt.z - sz) + b.rt.R); });
+  camFocus(sx, 1, sz, r + 3, 4, dur);
+}
+function finishTown(old) {
+  S.complete = true; S.cur = null; S.selected = null; updateLabelText();
+  if (old && old.group) setTimeout(() => { if (old.group.parent) old.group.parent.remove(old.group); }, 3000);
+  site = null; camFocusTown(1.8); refreshUI(); saveNow(); Audio.chime();
+}
+let doneShown = false;
+function syncDone() { const show = !!S.complete && S.mode === 'play' && !modalOpen; if (show !== doneShown) { doneShown = show; $('done').style.display = show ? 'flex' : 'none'; } }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(toast.h); toast.h = setTimeout(() => { t.style.opacity = 0; }, 2800); }
+
+/* ============================================================
+   PERSISTENCE (several saved towns)
    ============================================================ */
 let saveTimer = 0;
+const KEY_INDEX = CONFIG.saveKey + '.towns', keyTown = id => CONFIG.saveKey + '.town.' + id;
+let INDEX = { v: 1, current: null, list: [] };
 function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); }
+function writeIndex() { try { localStorage.setItem(KEY_INDEX, JSON.stringify(INDEX)); } catch (e) {} }
+function newTownId() { return 't' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); }
+function metaOf(d, id) { return { id, name: String(d.townName || 'Town'), count: d.buildings.length, cap: capFor(d.setting, d.buildings.length), kind: (d.setting && d.setting.kind) || 'none', updated: Date.now() }; }
+function townData() {
+  return { schemaVersion: CONFIG.schemaVersion, townName: S.townName, theme: S.themeIdx, settings: S.settings, nextId: S.nextId, lotCount: S.lotCount, history: S.history, setting: S.setting, connected: S.connected,
+    buildings: S.buildings.map(b => ({ id: b.id, type: b.type, lot: b.lot, colors: b.colors, seed: b.seed, name: b.name, custom: b.custom, salt: b.salt || 0 })), cur: S.cur };
+}
 function saveNow() {
-  clearTimeout(saveTimer);
+  clearTimeout(saveTimer); if (!S.townId) return;
   try {
-    const data = { schemaVersion: CONFIG.schemaVersion, townName: S.townName, theme: S.themeIdx, settings: S.settings, nextId: S.nextId, lotCount: S.lotCount, history: S.history, setting: S.setting,
-      buildings: S.buildings.map(b => ({ id: b.id, type: b.type, lot: b.lot, colors: b.colors, seed: b.seed, name: b.name, custom: b.custom, salt: b.salt || 0 })), cur: S.cur };
-    localStorage.setItem(CONFIG.saveKey, JSON.stringify(data));
+    const d = townData(); localStorage.setItem(keyTown(S.townId), JSON.stringify(d));
+    const m = metaOf(d, S.townId), i = INDEX.list.findIndex(t => t.id === S.townId); if (i >= 0) INDEX.list[i] = m; else INDEX.list.push(m);
+    INDEX.current = S.townId; writeIndex();
   } catch (e) {}
 }
-function loadSave() {
-  try {
-    const raw = localStorage.getItem(CONFIG.saveKey); if (!raw) return null;
-    const d = JSON.parse(raw); if (!d || (d.schemaVersion !== CONFIG.schemaVersion && d.schemaVersion !== 1) || !Array.isArray(d.buildings)) return null;
-    const okLot = l => Array.isArray(l) && l.length === 2 && Number.isFinite(l[0]) && Number.isFinite(l[1]);
-    const okCol = c => c && Number.isFinite(c.wall) && Number.isFinite(c.wall2) && Number.isFinite(c.roof);
-    const bs = d.buildings.filter(b => b && CONFIG.buildings[b.type] && okLot(b.lot) && okCol(b.colors) && Number.isFinite(b.seed));
-    if (bs.length !== d.buildings.length) return null;
-    if (d.cur && !(CONFIG.buildings[d.cur.type] && okLot(d.cur.lot) && okCol(d.cur.colors) && Number.isFinite(d.cur.seed) && Number.isFinite(d.cur.placed))) d.cur = null;
-    return d;
-  } catch (e) { return null; }
+function validateTown(d) {
+  if (!d || (d.schemaVersion !== CONFIG.schemaVersion && d.schemaVersion !== 1) || !Array.isArray(d.buildings)) return null;
+  const okLot = l => Array.isArray(l) && l.length === 2 && Number.isFinite(l[0]) && Number.isFinite(l[1]);
+  const okCol = c => c && Number.isFinite(c.wall) && Number.isFinite(c.wall2) && Number.isFinite(c.roof);
+  const bs = d.buildings.filter(b => b && CONFIG.buildings[b.type] && okLot(b.lot) && okCol(b.colors) && Number.isFinite(b.seed));
+  if (bs.length !== d.buildings.length) return null;
+  if (d.cur && !(CONFIG.buildings[d.cur.type] && okLot(d.cur.lot) && okCol(d.cur.colors) && Number.isFinite(d.cur.seed) && Number.isFinite(d.cur.placed))) d.cur = null;
+  if (d.schemaVersion === 1) { const sc = l => [l[0] * 12, l[1] * 12]; d.buildings.forEach(b => b.lot = sc(b.lot)); if (d.cur) d.cur.lot = sc(d.cur.lot); d.schemaVersion = CONFIG.schemaVersion; }   // old grid saves -> world coords
+  d.connected = Array.isArray(d.connected) ? d.connected.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ang) && Number.isFinite(c.d)).slice(0, 2) : [];
+  d.setting = d.setting && d.setting.kind ? d.setting : { kind: 'none', seed: 1 };
+  return d;
 }
-function applySave(d) {
+function readTown(id) { try { const raw = localStorage.getItem(keyTown(id)); return raw ? validateTown(JSON.parse(raw)) : null; } catch (e) { return null; } }
+function readIndex() {
+  try { const d = JSON.parse(localStorage.getItem(KEY_INDEX)); if (d && Array.isArray(d.list)) return { v: 1, current: d.current || null, list: d.list.filter(t => t && typeof t.id === 'string') }; } catch (e) {}
+  return null;
+}
+function migrateOld() {   // single-save version -> first entry of the town list
+  try {
+    const raw = localStorage.getItem(CONFIG.saveKey); if (!raw) return; const d = validateTown(JSON.parse(raw)); if (!d) return;
+    const id = newTownId(); localStorage.setItem(keyTown(id), JSON.stringify(d)); INDEX.list.push(metaOf(d, id)); INDEX.current = id; writeIndex(); localStorage.removeItem(CONFIG.saveKey);
+  } catch (e) {}
+}
+function applySave(d, keepSettings) {
   S.townName = String(d.townName || townNameGen()).slice(0, 24); S.themeIdx = clamp(d.theme | 0, 0, CONFIG.palettes.length - 1);
-  Object.assign(S.settings, d.settings || {}); S.nextId = d.nextId | 0 || 1; S.lotCount = d.lotCount | 0; S.history = Array.isArray(d.history) ? d.history.slice(-6) : [];
+  if (!keepSettings) Object.assign(S.settings, d.settings || {});
+  S.nextId = d.nextId | 0 || 1; S.lotCount = d.lotCount | 0; S.history = Array.isArray(d.history) ? d.history.slice(-6) : [];
   S.buildings = d.buildings.map(b => ({ id: b.id, type: b.type, lot: b.lot, colors: b.colors, seed: b.seed, name: String(b.name || ''), custom: !!b.custom, salt: b.salt | 0 }));
-  S.cur = d.cur || null; S.setting = d.setting && d.setting.kind ? d.setting : { kind: 'none', seed: 1 };
-  if (d.schemaVersion === 1) { const sc = l => [l[0] * 12, l[1] * 12]; S.buildings.forEach(b => b.lot = sc(b.lot)); if (S.cur) S.cur.lot = sc(S.cur.lot); }   // old grid saves -> world coords
+  S.cur = d.cur || null; S.setting = d.setting; S.connected = d.connected || [];
 }
 window.addEventListener('pagehide', saveNow);
 
 /* ============================================================
    RESET / BOOT HELPERS
    ============================================================ */
-function resetTown(kind) {
-  S.setting = newSetting(kind); terrainInit(S.setting.kind, S.setting.seed); clearTerrain();
-  S.buildings.forEach(b => disposeBuildingObject(b)); S.buildings = []; S.history = []; S.nextId = 1; S.lotCount = 0; S.selected = null; S.cur = null;
-  timers.length = 0; tweens.length = 0; flags.length = 0;
+function teardownTown() {
+  S.buildings.forEach(b => disposeBuildingObject(b)); S.buildings = [];
+  clearTerrain(); clearConnected(); lsClear();
   if (site) { scene.remove(site.group); site.mesh.dispose(); site = null; }
-  loose.length = 0; flying = 0; Object.keys(layoutCache).forEach(k => delete layoutCache[k]);
-  S.townName = townNameGen(); updateLabelText();
-  const rec = newRec(); S.cur = { type: rec.type, lot: rec.lot, seed: rec.seed, colors: rec.colors, placed: 0 }; createSite(rec, 0); refreshLooseForNewSite(); camFocusSite(0.8);
-  buildTerrain(); rebuildLandscape(); refreshUI(); saveNow();
+  loose.length = 0; flying = 0; timers.length = 0; tweens.length = 0; flags.length = 0; Object.keys(layoutCache).forEach(k => delete layoutCache[k]);
+  S.selected = null; S.complete = false; hold.active = false; orb.active = false; orb.vis = 0; orbGroup.visible = false; orbRing.visible = false; orbBlob.visible = false; orbLight.visible = false; updateLabelText();
+}
+function startTown(d, kind, id, keepSettings) {
+  hold.active = false; S.complete = false; S.selected = null;
+  if (d) applySave(d, keepSettings);
+  else { S.buildings = []; S.history = []; S.nextId = 1; S.lotCount = 0; S.cur = null; S.connected = []; S.townName = townNameGen(); S.setting = newSetting(kind); }
+  S.townId = id || newTownId();
+  terrainInit(S.setting.kind, S.setting.seed); setTheme(S.themeIdx, true);
+  S.buildings.forEach(b => { if (!b.name) b.name = genName(b); buildBuildingObject(b); });
+  buildTerrain(); rebuildLandscape();
+  let rec = null, placed = 0;
+  if (S.cur) { rec = { type: S.cur.type, lot: S.cur.lot, seed: S.cur.seed, colors: S.cur.colors }; placed = clamp(S.cur.placed | 0, 0, layoutFor(rec).slots.length - 1); }
+  else if (S.buildings.length >= townCap()) S.complete = true;
+  else { rec = newRec(); S.cur = { type: rec.type, lot: rec.lot, seed: rec.seed, colors: rec.colors, placed: 0 }; }
+  if (rec) {
+    createSite(rec, placed); site.state = 'rising'; S.cur.placed = placed; setupSitePaths();
+    const n = Math.min(CONFIG.loose.max, 16, site.layout.slots.length - site.assigned); for (let i = 0; i < n; i++) spawnBrick(false);
+  }
+  cam.away = false; camFocusSite(0); cam.zoomT = cam.zoom = 1; updateShadowCasters(); updateCamera(0.016);
+  if (S.explore) setExplore(false);
+  refreshUI(); updateLabelText(); saveNow();
+}
+function switchTown(id) {
+  if (id === S.townId) return; saveNow();
+  const d = readTown(id); if (!d) { toast('Could not open that town'); return; }
+  teardownTown(); startTown(d, null, id, true); toast('Welcome to ' + S.townName);
+}
+function newTown(kind) {
+  if (INDEX.list.length >= CONFIG.maxTowns) { toast('You can keep ' + CONFIG.maxTowns + ' towns - delete one first'); return; }
+  saveNow(); teardownTown(); startTown(null, kind, null, true); toast('New town: ' + S.townName);
+}
+function deleteTown(id) {
+  try { localStorage.removeItem(keyTown(id)); } catch (e) {}
+  INDEX.list = INDEX.list.filter(t => t.id !== id);
+  INDEX.list.forEach(t => { const d = readTown(t.id); if (d && d.connected.some(c => c.id === id)) { d.connected = d.connected.filter(c => c.id !== id); try { localStorage.setItem(keyTown(t.id), JSON.stringify(d)); } catch (e) {} } });
+  if (id === S.townId) {
+    S.townId = null; teardownTown();
+    const nxt = INDEX.list[0], d = nxt && readTown(nxt.id);
+    if (d) startTown(d, null, nxt.id, true); else startTown(null, 'random', null, true);
+  } else { S.connected = S.connected.filter(c => c.id !== id); buildTerrain(); rebuildLandscape(); }
+  INDEX.current = S.townId; writeIndex(); saveNow();
+}
+function curExtent() {
+  let e = TERR.plaza ? TERR.plaza.size * 1.3 : 12;
+  S.buildings.forEach(b => { const q = lotPos(b.lot); e = Math.max(e, Math.hypot(q.x, q.z) + layoutFor(b).R); });
+  if (site) e = Math.max(e, Math.hypot(site.x, site.z) + site.R);
+  return e;
+}
+function townExtent(d) { let e = plazaParams(d.setting.seed).size * 1.3; d.buildings.forEach(b => { e = Math.max(e, Math.hypot(b.lot[0], b.lot[1]) + layoutFor(b).R); }); return e; }
+function connectTown(otherId) {
+  const dB = readTown(otherId); if (!dB) { toast('Could not open that town'); return; }
+  if (S.connected.some(c => c.id === otherId)) return;
+  if (S.connected.length >= 2 || dB.connected.length >= 2) { toast('A town can connect to 2 others'); return; }
+  const extB = townExtent(dB), dist = Math.max(60, curExtent() + extB + 26), tries = []; for (let i = 0; i < 16; i++) tries.push(Math.random() * TAU);
+  let ang = null; for (const a of tries) if (!terrainBlocked(Math.cos(a) * dist, Math.sin(a) * dist, extB + 4) && S.connected.every(c => Math.abs(wrapAng(a - c.ang)) > 1.0)) { ang = a; break; }
+  if (ang === null) ang = tries[0];
+  const cx = Math.cos(ang) * dist, cz = Math.sin(ang) * dist; let from = null, bd = 1e9;
+  S.buildings.forEach(b => { const q = lotPos(b.lot), dd = Math.hypot(q.x - cx, q.z - cz); if (dd < bd) { bd = dd; from = b.id; } });
+  S.connected.push({ id: otherId, ang, d: dist, from });
+  const angB = wrapAng(ang + Math.PI), bx = Math.cos(angB) * dist, bz = Math.sin(angB) * dist; let fromB = null; bd = 1e9;
+  dB.buildings.forEach(b => { const dd = Math.hypot(b.lot[0] - bx, b.lot[1] - bz); if (dd < bd) { bd = dd; fromB = b.id; } });
+  dB.connected.push({ id: S.townId, ang: angB, d: dist, from: fromB });
+  try { localStorage.setItem(keyTown(otherId), JSON.stringify(dB)); } catch (e) {}
+  saveNow(); buildTerrain(); rebuildLandscape(); toast('Connected to ' + dB.townName + ' - use Explore to follow the road');
+}
+function disconnectTown(otherId) {
+  S.connected = S.connected.filter(c => c.id !== otherId);
+  const dB = readTown(otherId); if (dB) { dB.connected = dB.connected.filter(c => c.id !== S.townId); try { localStorage.setItem(keyTown(otherId), JSON.stringify(dB)); } catch (e) {} }
+  saveNow(); buildTerrain(); rebuildLandscape(); toast('Towns disconnected');
+}
+function clearConnected() {
+  TERR.conn.forEach(c => { scene.remove(c.mesh); c.mesh.geometry.dispose(); if (c.sprite) { scene.remove(c.sprite); c.sprite.material.map.dispose(); c.sprite.material.dispose(); } });
+  TERR.conn = []; TERR.connLinks = [];
+}
+function buildConnected() {   // connected saved towns appear as neighbours (one merged, light mesh each) joined by a road
+  clearConnected();
+  for (const cn of S.connected) {
+    const d = readTown(cn.id); if (!d) continue;
+    const nx = Math.cos(cn.ang) * cn.d, nz = Math.sin(cn.ang) * cn.d, gb = new GeoBuilder(), pp = plazaParams(d.setting.seed), bg = GEO.brickPlain;
+    if (pp.shape === 'round') gb.add(mk(new THREE.CylinderGeometry(pp.size, pp.size, 0.04, 32), '#ffffff'), _m.makeTranslation(nx, 0.02, nz), new C3('#d9cfb8'));
+    else gb.add(mk(new THREE.BoxGeometry(pp.size * 2, 0.04, pp.size * 2), '#ffffff'), _m.makeRotationY(pp.rot).setPosition(nx, 0.02, nz), new C3('#d9cfb8'));
+    d.buildings.forEach(b => {
+      const L = layoutFor(b), yaw = Math.atan2(-b.lot[0], -b.lot[1]) + (((b.seed >>> 3) % 1000) / 1000 - 0.5) * 0.5;
+      const M0 = new M4().compose(new V3(nx + b.lot[0], 0, nz + b.lot[1]), new Q4().setFromAxisAngle(Y_AXIS, yaw), new V3(1, 1, 1)).multiply(new M4().makeTranslation(0, PED_H, 0));
+      for (const sl of L.slots) { if (sl.flag) continue; slotMatrix(sl, _m); _m.premultiply(M0); gb.add(bg, _m, resolveColor(b, sl.c, sl.j, _c)); }
+      gb.add(mk(new THREE.CylinderGeometry(L.R * 0.88, L.R * 0.93, PED_H, 20), '#ffffff'), _m.makeTranslation(nx + b.lot[0], PED_H / 2, nz + b.lot[1]), PC.stone);
+    });
+    const mesh = new THREE.Mesh(gb.build(), litMat('vc')); mesh.userData.lk = 'vc'; shadowFlags(mesh, false, true); scene.add(mesh);
+    const cvs = document.createElement('canvas'); cvs.width = 512; cvs.height = 128; const g2 = cvs.getContext('2d');
+    rrect(g2, 6, 6, 500, 116, 50); g2.fillStyle = 'rgba(255,246,224,.95)'; g2.fill(); g2.lineWidth = 8; g2.strokeStyle = '#e8b84b'; g2.stroke();
+    g2.fillStyle = '#6a4d2a'; g2.textAlign = 'center'; g2.textBaseline = 'middle'; let fs = 56; do { g2.font = '800 ' + fs + 'px ui-rounded,"Trebuchet MS",system-ui,sans-serif'; fs -= 4; } while (g2.measureText(d.townName).width > 440 && fs > 16);
+    g2.fillText(d.townName, 256, 66);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(cvs), depthTest: false, transparent: true, fog: false })); sp.scale.set(15, 3.75, 1); sp.position.set(nx, 13, nz); sp.renderOrder = 20; scene.add(sp);
+    const fb = S.buildings.find(o => o.id === cn.from), ap = fb ? lotPos(fb.lot) : { x: 0, z: 0 }, ar = fb ? layoutFor(fb).R : 4;
+    let best = null, bd = 1e9; d.buildings.forEach(b => { const dd = Math.hypot(nx + b.lot[0] - ap.x, nz + b.lot[1] - ap.z); if (dd < bd) { bd = dd; best = b; } });
+    if (best) TERR.connLinks.push({ a: [ap.x, ap.z], b: [nx + best.lot[0], nz + best.lot[1]], ar, br: layoutFor(best).R });
+    TERR.conn.push({ id: cn.id, x: nx, z: nz, r: townExtent(d) + 6, mesh, sprite: sp });
+  }
+}
+
+/* ---------- My Towns / new town UI ---------- */
+function openNewTownSheet() {
+  if (INDEX.list.length >= CONFIG.maxTowns) {
+    openModal('<h3>That is a lot of towns!</h3><div>You can keep ' + CONFIG.maxTowns + ' towns. Delete one in My Towns first.</div><div class="row"><button class="pill t-sky" id="ntTowns">My Towns</button><button class="pill" data-close="1">Close</button></div>', el => { el.querySelector('#ntTowns').onclick = () => openTowns(); });
+    return;
+  }
+  const opts = [['river', 'A river'], ['hill', 'A hill'], ['forest', 'A forest'], ['farmland', 'Farmland'], ['road', 'A road'], ['neighbor', 'Another town'], ['random', 'Surprise me']];
+  openModal('<h3>Start a new town</h3><div>Your current town stays saved. Where should the new town sit?</div><div class="row">' + opts.map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" data-close="1">Cancel</button></div>',
+    el => el.querySelectorAll('[data-setting]').forEach(b => b.onclick = () => { closeModal(); newTown(b.dataset.setting); }));
+}
+function openTowns() {
+  saveNow();
+  const rows = INDEX.list.map(t => {
+    const isCur = t.id === S.townId, linked = S.connected.some(c => c.id === t.id);
+    return '<div class="trow' + (isCur ? ' cur' : '') + '"><div class="tt"><b>' + esc(t.name) + '</b>' + (isCur ? ' <span class="badge">you are here</span>' : '') + '<small>' + t.count + '/' + t.cap + ' buildings · beside ' + esc(TERR_LABEL[t.kind] || 'open meadow') + (linked ? ' · connected' : '') + '</small></div><div class="ta">'
+      + (isCur ? '' : '<button class="pill t-mint" data-open="' + t.id + '">' + ic('play') + 'Open</button><button class="pill ' + (linked ? 't-peach' : 't-sky') + '" data-link="' + t.id + '">' + ic('link') + (linked ? 'Unlink' : 'Connect') + '</button>')
+      + '<button class="pill round t-peach" data-del="' + t.id + '" aria-label="Delete town">' + ic('trash') + '</button></div></div>';
+  }).join('');
+  openModal('<h3>My Towns</h3><div class="scroll">' + rows + '</div><div class="row"><button class="pill t-mint" id="tnNew">' + ic('plus') + 'New town</button><button class="pill" data-close="1">Close</button></div><small>Open a town to play it. Connect two towns and each shows up as the other\'s neighbour, joined by a road.</small>', el => {
+    el.querySelector('#tnNew').onclick = () => openNewTownSheet();
+    el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { closeModal(); switchTown(b.dataset.open); });
+    el.querySelectorAll('[data-link]').forEach(b => b.onclick = () => { const id = b.dataset.link; if (S.connected.some(c => c.id === id)) disconnectTown(id); else connectTown(id); openTowns(); });
+    el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      const t = INDEX.list.find(q => q.id === b.dataset.del); if (!t) return;
+      modalEl.firstChild.innerHTML = '<h3>Delete "' + esc(t.name) + '"?</h3><div>This town and its buildings will be gone for good.</div><div class="row"><button class="pill t-peach" id="dlYes">Delete</button><button class="pill t-mint" id="dlNo">Keep it</button></div>';
+      $('dlYes').onclick = () => { closeModal(); deleteTown(t.id); toast('Town deleted'); }; $('dlNo').onclick = () => openTowns();
+    });
+  });
 }
 
 /* ============================================================
@@ -2067,7 +2369,7 @@ function tick(dtMs, t0) {
   const dt = S.paused ? 0 : Math.min(dtMs / 1000, 0.05); simT += dt;
   updateTimers(dt); updateTweens(dt);
   updateCamera(Math.min(dtMs / 1000, 0.05)); updateOrb(dt, simT); updateSite(dt); updateBricks(dt, simT); lsUpdate(dt); updateParticles(dt); updateFlags(dt, simT);
-  updateLabelPos();
+  updateLabelPos(); syncDone();
   renderer.render(scene, camera);
   perfSample(dtMs, performance.now() - t0, dt);
 }
@@ -2083,21 +2385,15 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
    BOOT
    ============================================================ */
 (function boot() {
-  const d = loadSave(); if (d) applySave(d); else { S.townName = townNameGen(); S.setting = newSetting(); }
-  terrainInit(S.setting.kind, S.setting.seed);
+  INDEX = readIndex();
+  if (!INDEX) { INDEX = { v: 1, current: null, list: [] }; migrateOld(); }
+  let d = null, id = null;
+  for (const tid of [INDEX.current].concat(INDEX.list.map(t => t.id))) { if (!tid) continue; const dd = readTown(tid); if (dd) { d = dd; id = tid; break; } }
+  if (d) Object.assign(S.settings, d.settings || {});
   if (S.settings.quality !== 'auto' && CONFIG.quality[S.settings.quality]) { tierName = S.settings.quality; Q = CONFIG.quality[tierName]; } else S.settings.quality = 'auto';
   applyQuality(tierName, true); prevBevel = Q.bevel;
-  swapBrickGeometry(); setTheme(S.themeIdx, true);
-  resize();
-  S.buildings.forEach(b => { if (!b.name) b.name = genName(b); buildBuildingObject(b); });
-  buildTerrain(); rebuildLandscape();
-  let rec, placed = 0;
-  if (S.cur) { rec = { type: S.cur.type, lot: S.cur.lot, seed: S.cur.seed, colors: S.cur.colors }; placed = clamp(S.cur.placed | 0, 0, layoutFor(rec).slots.length - 1); }
-  else { rec = newRec(); S.cur = { type: rec.type, lot: rec.lot, seed: rec.seed, colors: rec.colors, placed: 0 }; }
-  createSite(rec, placed); site.state = 'rising'; S.cur.placed = placed;
-  const initial = Math.min(CONFIG.loose.max, 16); for (let i = 0; i < initial; i++) spawnBrick(false);
-  camFocusSite(0); cam.zoomT = cam.zoom = 1; updateShadowCasters(); updateCamera(0.016);
-  refreshUI(); updateLabelText();
+  swapBrickGeometry(); resize();
+  startTown(d, 'random', id, true);
   last = performance.now(); raf = requestAnimationFrame(frame);
   window.__gh = { genLayout, CONFIG, buildBuildingObject, rebuildLandscape, camFocus, genName, S, site: () => site, THREE, tick: ms => tick(ms, performance.now()), cam, orb, loose };
 })();
