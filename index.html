@@ -42,6 +42,8 @@ body.photo #ui{display:none}
 body.photo #photobar{display:flex}
 body.photo #label{display:none!important}
 .shutter{width:68px;height:68px;border-radius:50%;font-size:28px;padding:0}
+#rot{position:fixed;left:0;right:0;top:calc(52% - 24px);display:flex;justify-content:space-between;padding:0 calc(8px + var(--sr)) 0 calc(8px + var(--sl));pointer-events:none;z-index:4}
+#rot .pill{opacity:.9}
 #flash{position:fixed;left:0;top:0;right:0;bottom:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .45s ease-out;z-index:20}
 #modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(90,70,40,.38);display:none;align-items:flex-start;justify-content:center;z-index:30;padding:calc(8vh + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));box-sizing:border-box}
 #modal.open{display:flex}
@@ -80,6 +82,7 @@ input[type=text]{font:700 18px ui-rounded,system-ui,sans-serif;padding:10px 14px
   <button class="pill t-butter" id="pbCap"></button>
   <button class="pill t-peach" id="pbExit"><i class="ic" data-i="exit"></i>Exit</button>
 </div>
+<div id="rot"><button class="pill round t-lav" id="btnRotL" aria-label="Rotate left"><i class="ic" data-i="rotL"></i></button><button class="pill round t-lav" id="btnRotR" aria-label="Rotate right"><i class="ic" data-i="rotR"></i></button></div>
 <div id="flash"></div>
 <div id="modal"></div>
 <div id="paused"><div>Paused</div><button class="pill t-mint" id="btnResume"><i class="ic" data-i="play"></i>Resume</button></div>
@@ -103,10 +106,10 @@ window.__ghBoot = true;
 const GAME_NAME = 'Glimmer Hollow';
 const PED_H = 0.25;
 const CONFIG = {
-  saveKey: 'glimmerhollow.save', schemaVersion: 1,
+  saveKey: 'glimmerhollow.save', schemaVersion: 2,
   maxPixels: 2.5e6, photoMaxPixels: 8e6, photoMaxScale: 2,
   fov: 40, pitchDeg: 40, pitchMin: 24, pitchMax: 62, zoomMin: 0.55, zoomMax: 1.7,
-  lotSpacing: 12, plazaRadius: 9.6, fitRadius: 6.8,
+  plazaRadius: 9.6, fitRadius: 6.8, buildingGap: 3.4,
   brick: { L: 1.0, H: 0.4, T: 0.4 },   // walls are built from mixed big/small bricks (random 1-3 courses tall, 0.5-1.9 long)
   pickup: { baseRadius: 1.5, growRadius: 2.6, growTime: 5, moveBonus: 0.8, moveSpeedRef: 7,
             intervalStill: 0.34, intervalMoving: 0.09, driftMult: 2.3, driftSpeed: 1.6,
@@ -245,7 +248,7 @@ const CONFIG = {
       { k: 'walls', w: 4.6, d: 3.2, courses: 6, base: 1, c: 'wall2',
         doors: [{ side: 'front', x: 0, w: 1.6, h: 4 }],
         windows: [{ side: 'front', x: 0, w: 0.9, y: 4, h: 2 }, { side: 'left', x: 0, w: 0.8, y: 2, h: 2 }, { side: 'right', x: 0, w: 0.8, y: 2, h: 2 }] },
-      { k: 'gable', on: 0, axis: 'x', ov: 0.3, step: 0.6, th: 0.5 },
+      { k: 'gable', on: 0, axis: 'x', ov: 0.3, pitch: 0.62 },
       { k: 'flag', on: 1, at: [1.8, 0], dy: -0.5, n: 2 }
     ] },
     roundHut: { role: 'home', label: 'Round Hut', parts: [
@@ -743,7 +746,7 @@ PRIM.walls = function (p, L, idx) {
       }
     });
   });
-  L.meta[idx] = { top: y0 + p.courses * H, w, d, at, y0 };
+  L.meta[idx] = { top: y0 + p.courses * H, w, d, at, y0, c: p.c || 'wall' };
 };
 PRIM.ring = function (p, L, idx) {
   const B = CONFIG.brick, H = B.H, T = B.T, r = p.r, at = p.at || [0, 0];
@@ -775,30 +778,48 @@ PRIM.ring = function (p, L, idx) {
   L.meta[idx] = { top: y0 + p.courses * H, r, at, y0, w: 2 * r, d: 2 * r };
 };
 PRIM.gable = function (p, L, idx) {
-  const m = L.meta[p.on], ov = p.ov == null ? 0.3 : p.ov, step = p.step || 0.48, th = p.th || 0.45, ax = p.axis || 'x';
-  const len = (ax === 'x' ? m.w : m.d) + 2 * ov; let cross = (ax === 'x' ? m.d : m.w) + 2 * ov, k = 0;
-  const nb = Math.max(1, Math.round(len / 1.3)), bl = len / nb;
-  while (cross >= 0.5) {
-    const y = m.top + (k + 0.5) * th, pieces = Math.ceil(cross / 2.2), pc = cross / pieces;
-    for (let i = 0; i < nb; i++) for (let q = 0; q < pieces; q++) {
-      const u = (ax === 'x' ? m.at[0] : m.at[1]) - len / 2 + (i + 0.5) * bl, v = (ax === 'x' ? m.at[1] : m.at[0]) - cross / 2 + (q + 0.5) * pc;
-      if (ax === 'x') slot(L, { x: u, y, z: v, sx: bl - 0.015, sy: th - 0.01, sz: pc - 0.015, c: (k & 1) ? 'roof2' : 'roof', ph: 1 });
-      else slot(L, { x: v, y, z: u, sx: pc - 0.015, sy: th - 0.01, sz: bl - 0.015, c: (k & 1) ? 'roof2' : 'roof', ph: 1 });
-    }
-    cross -= 2 * step; k++;
+  // real pitched roof: overlapping rows of big tiles (alternating tones), gable-end walls, ridge cap
+  const m = L.meta[p.on], T = CONFIG.brick.T, ov = p.ov == null ? 0.3 : p.ov, ax = p.axis || 'x', al = p.pitch || 0.78, tn = Math.tan(al), sn = Math.sin(al), cs = Math.cos(al);
+  const wl = ax === 'x' ? m.w : m.d, wd = ax === 'x' ? m.d : m.w, at = m.at, tk = 0.16;
+  const len = wl + 2 * ov, half = wd / 2 + ov, Ls = half / cs, rows = Math.max(2, Math.round(Ls / 0.75)), rw = Ls / rows;
+  const nb = Math.max(1, Math.round(len / 1.1)), bl = len / nb, ye = m.top - 0.05;
+  const put = (u, v, y, su, sv, rot, c) => {
+    if (ax === 'x') slot(L, { x: at[0] + u, y, z: at[1] + v, sx: su, sy: tk, sz: sv, rx: rot, c, ph: 1 });
+    else slot(L, { x: at[0] + v, y, z: at[1] + u, sx: sv, sy: tk, sz: su, rz: rot, c, ph: 1 });
+  };
+  for (const side of [1, -1]) for (let r = 0; r < rows; r++) {
+    const sd = (r + 0.5) * rw, v = side * (half - sd * cs), y = ye + sd * sn + tk * 0.5 / cs, c = (r & 1) ? 'roof2' : 'roof';
+    const th = al - 0.12, rot = ax === 'x' ? side * th : -side * th, sv = rw + 0.05;
+    if (!(r & 1)) for (let i = 0; i < nb; i++) put(-len / 2 + (i + 0.5) * bl, v, y, bl - 0.03, sv, rot, c);
+    else { put(-len / 2 + bl / 4, v, y, bl / 2 - 0.03, sv, rot, c); for (let i = 1; i < nb; i++) put(-len / 2 + i * bl, v, y, bl - 0.03, sv, rot, c); put(len / 2 - bl / 4, v, y, bl / 2 - 0.03, sv, rot, c); }
   }
-  L.meta[idx] = { top: m.top + k * th, at: m.at, w: m.w, d: m.d, y0: m.top };
+  const yr = ye + half * tn;
+  if (ax === 'x') slot(L, { x: at[0], y: yr + 0.06, z: at[1], sx: len + 0.1, sy: 0.2, sz: 0.34, c: 'roof2', ph: 1 });
+  else slot(L, { x: at[0], y: yr + 0.06, z: at[1], sx: 0.34, sy: 0.2, sz: len + 0.1, c: 'roof2', ph: 1 });
+  const lh = 0.4;                       // stepped gable-end walls under the roof line
+  for (let k = 0; k < 12; k++) {
+    const yt = (k + 1) * lh, zmax = Math.min(wd / 2 - 0.05, half - (yt + 0.12) / tn);
+    if (zmax < 0.25) break;
+    for (const e of [-1, 1]) {
+      const u = e * (wl / 2 - T / 2), y = m.top + (k + 0.5) * lh;
+      if (ax === 'x') slot(L, { x: at[0] + u, y, z: at[1], sx: T, sy: lh - 0.01, sz: 2 * zmax, c: m.c, ph: 1 });
+      else slot(L, { x: at[0], y, z: at[1] + u, sx: 2 * zmax, sy: lh - 0.01, sz: T, c: m.c, ph: 1 });
+    }
+  }
+  L.meta[idx] = { top: yr + 0.2, at, w: m.w, d: m.d, y0: m.top };
 };
 PRIM.cone = function (p, L, idx) {
-  const B = CONFIG.brick, m = L.meta[p.on], th = p.th || 0.34, layers = p.layers, r0 = p.r0 || m.r + 0.3, r1 = p.r1 || 0.12, y0 = m.top, at = m.at;
+  // conical roof built from tilted rings of big tiles
+  const m = L.meta[p.on], th = p.th || 0.5, layers = p.layers, r0 = p.r0 || m.r + 0.3, r1 = p.r1 || 0.12, y0 = m.top, at = m.at, tk = 0.16;
   for (let k = 0; k < layers; k++) {
-    const u = layers > 1 ? k / (layers - 1) : 0, r = lerp(r0, r1, u), n = Math.max(3, Math.round(TAU * r / (B.L * 0.85))), da = TAU / n;
+    const ro = r0 + (r1 - r0) * k / layers, ri = r0 + (r1 - r0) * (k + 1) / layers, rc = (ro + ri) / 2, sl = Math.hypot(th, ro - ri), beta = Math.atan2(th, ro - ri);
+    const n = Math.max(3, Math.round(TAU * rc / 1.0)), da = TAU / n, y = y0 + (k + 0.5) * th + tk * 0.4;
     for (let i = 0; i < n; i++) {
       const tc = (i + (k & 1 ? 0.5 : 0)) * da;
-      slot(L, { x: at[0] + Math.cos(tc) * r, y: y0 + (k + 0.5) * th, z: at[1] + Math.sin(tc) * r, sx: Math.max(0.22, r * da * 1.12), sy: th - 0.01, sz: clamp(r * 1.1, 0.16, B.T * 1.1), ry: -tc - Math.PI / 2, c: p.stripes ? ((k & 1) ? 'cream' : 'roof') : ((k & 1) ? 'roof2' : 'roof'), ph: 1 });
+      slot(L, { x: at[0] + Math.cos(tc) * rc, y, z: at[1] + Math.sin(tc) * rc, sx: Math.max(0.24, rc * da * 1.1), sy: tk, sz: sl + 0.08, rx: -(beta - 0.1), ry: -tc - Math.PI / 2, c: p.stripes ? ((k & 1) ? 'cream' : 'roof') : ((k & 1) ? 'roof2' : 'roof'), ph: 1 });
     }
   }
-  slot(L, { x: at[0], y: y0 + layers * th + 0.1, z: at[1], sx: 0.16, sy: 0.24, sz: 0.16, c: 'accent', ph: 1 });
+  slot(L, { x: at[0], y: y0 + layers * th + 0.1, z: at[1], sx: 0.18, sy: 0.26, sz: 0.18, c: 'accent', ph: 1 });
   L.meta[idx] = { top: y0 + layers * th + 0.22, at, r: r1, y0 };
 };
 PRIM.boxes = function (p, L, idx) {
@@ -843,7 +864,7 @@ function genLayout(type, seed) {
   for (const s of L.slots) {
     const e = s.ry ? Math.max(s.sx, s.sz) / 2 : 0;
     if (s.ph === 0) { x0 = Math.min(x0, s.x - (e || s.sx / 2)); x1 = Math.max(x1, s.x + (e || s.sx / 2)); z0 = Math.min(z0, s.z - (e || s.sz / 2)); z1 = Math.max(z1, s.z + (e || s.sz / 2)); top0 = Math.max(top0, s.y + s.sy / 2); }
-    topAll = Math.max(topAll, s.y + s.sy / 2);
+    topAll = Math.max(topAll, s.y + (s.sy + (s.rx ? Math.abs(Math.sin(s.rx)) * s.sz : 0) + (s.rz ? Math.abs(Math.sin(s.rz)) * s.sx : 0)) / 2);
   }
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   for (const arr of [L.slots, L.doors, L.windows, L.signs, L.flags]) for (const o of arr) { o.x -= cx; o.z -= cz; }
@@ -891,8 +912,47 @@ function spiral(n) {
   for (let i = 0; i < n; i++) { x += dx; z += dz; if (--left === 0) { const t = dx; dx = -dz; dz = t; if (++seg % 2 === 0) len++; left = len; } }
   return [x, z];
 }
-const lotPos = lot => ({ x: lot[0] * CONFIG.lotSpacing, z: lot[1] * CONFIG.lotSpacing });
-const yawOf = (rec, role) => (((rec.seed >>> 3) % 1000) / 1000 - 0.5) * (role === 'shop' ? 0.4 : 0.6);
+const lotPos = lot => ({ x: lot[0], z: lot[1] });   // world position (free-form, not a grid)
+function yawOf(rec, role) {   // front faces the nearest earlier building (the street side)
+  if (rec._yaw !== undefined) return rec._yaw;
+  const jit = (((rec.seed >>> 3) % 1000) / 1000 - 0.5) * 0.5, me = lotPos(rec.lot), myId = rec.id == null ? 1e9 : rec.id;
+  let best = null, bd = 1e9;
+  for (const o of S.buildings) { if (o === rec || o.id >= myId) continue; const q = lotPos(o.lot), d = Math.hypot(q.x - me.x, q.z - me.z); if (d < bd) { bd = d; best = q; } }
+  const t = best || { x: 0, z: 0 }, dx = t.x - me.x, dz = t.z - me.z;
+  return (rec._yaw = Math.hypot(dx, dz) < 1 ? jit : Math.atan2(dx, dz) + jit);
+}
+function connectionsOf(b) {   // earlier buildings this one has a street to (nearest, + a second if close)
+  const me = lotPos(b.lot), c = [];
+  for (const o of S.buildings) { if (o === b || o.id >= b.id) continue; const q = lotPos(o.lot); c.push({ o, x: q.x, z: q.z, d: Math.hypot(q.x - me.x, q.z - me.z) }); }
+  c.sort((a, d) => a.d - d.d); const out = c.slice(0, 1);
+  if (c[1] && c[1].d < c[0].d * 1.5 && c[1].d < 24) out.push(c[1]);
+  return out;
+}
+function distSeg(px, pz, ax, az, bx, bz) { return distToSeg(px, pz, ax, az, bx, bz); }
+function pickPos(R) {
+  if (!S.buildings.length) return [0, 0];
+  const bs = S.buildings.map(b => { const q = lotPos(b.lot); return { x: q.x, z: q.z, R: layoutFor(b).R }; });
+  let cx = 0, cz = 0; bs.forEach(b => { cx += b.x; cz += b.z; }); cx /= bs.length; cz /= bs.length;
+  const segs = TERR.links.slice(); S.buildings.forEach(b => { const q = lotPos(b.lot); connectionsOf(b).forEach(c => segs.push([q.x, q.z, c.x, c.z])); });
+  const gap = CONFIG.buildingGap, plazaR = CONFIG.plazaRadius - 1.0;
+  let best = null, bestS = 1e9;
+  for (let k = 0; k < 260; k++) {
+    const a0 = bs[Math.floor(Math.random() * bs.length)], ang = Math.random() * TAU, dist = a0.R + R + gap + Math.random() * 4.5 * (1 + k / 90);
+    const x = a0.x + Math.cos(ang) * dist, z = a0.z + Math.sin(ang) * dist;
+    if (Math.hypot(x, z) < plazaR + R + 1.2) continue;
+    if (bs.some(o => Math.hypot(o.x - x, o.z - z) < o.R + R + gap)) continue;
+    if (terrainBlocked(x, z, R + 1.5) || terrainBlocked((x + a0.x) / 2, (z + a0.z) / 2, 1)) continue;
+    if (segs.some(g => distSeg(x, z, g[0], g[1], g[2], g[3]) < R + 1.0)) continue;
+    const sc = Math.hypot(x - cx, z - cz) + Math.random() * 5;
+    if (sc < bestS) { bestS = sc; best = [x, z]; }
+  }
+  if (best) return best;
+  for (let rr = 14; rr < 400; rr += 3) for (let k = 0; k < 24; k++) {
+    const a = Math.random() * TAU, x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+    if (!bs.some(o => Math.hypot(o.x - x, o.z - z) < o.R + R + gap) && !terrainBlocked(x, z, R + 1.5)) return [x, z];
+  }
+  return [500, 500];
+}
 const layoutCache = {};
 function layoutFor(rec) { const k = rec.type + ':' + rec.seed; return layoutCache[k] || (layoutCache[k] = genLayout(rec.type, rec.seed)); }
 
@@ -919,7 +979,7 @@ function makeScaffold(L) {
   const m = new THREE.Mesh(mergeGeos(parts), litMat('vc')); m.userData.lk = 'vc'; shadowFlags(m, false, false); return m;
 }
 const BRICK_DUMMY = new THREE.Object3D();
-function slotQuat(s, out) { _e.set(s.rx, s.ry, s.rz); return out.setFromEuler(_e); }
+function slotQuat(s, out) { _e.set(s.rx, s.ry, s.rz, 'YXZ'); return out.setFromEuler(_e); }
 function slotMatrix(s, out) { slotQuat(s, _q); return out.compose(_v.set(s.x, s.y, s.z), _q, _s.set(s.sx, s.sy, s.sz)); }
 
 function createSite(rec, placed) {
@@ -986,7 +1046,8 @@ function nextType(rng) {
 }
 function newRec() {
   const seed = (Math.random() * 2147483647) | 0, rng = mulberry32(seed), type = nextType(rng);
-  return { type, lot: spiral(S.lotCount), seed, colors: { wall: Math.floor(rng() * 5), wall2: Math.floor(rng() * 5), roof: Math.floor(rng() * 5) } };
+  const rec = { type, seed, colors: { wall: Math.floor(rng() * 5), wall2: Math.floor(rng() * 5), roof: Math.floor(rng() * 5) } };
+  rec.lot = pickPos(layoutFor(rec).R); return rec;
 }
 
 /* ============================================================
@@ -1064,7 +1125,7 @@ function disposeBuildingObject(b) {
   if (rt.signTex) { rt.signTex.dispose(); rt.signMat.dispose(); rt.signGeo.dispose(); }
   rt.group = null;
 }
-function rebuildAllBuildings() { S.buildings.forEach(b => { disposeBuildingObject(b); buildBuildingObject(b); }); updateShadowCasters(); }
+function rebuildAllBuildings() { S.buildings.forEach(b => { disposeBuildingObject(b); buildBuildingObject(b); }); buildTerrain(); updateShadowCasters(); }
 function updateShadowCasters() {
   if (!site) return;
   S.buildings.forEach(b => { if (b.rt && b.rt.mesh) { const c = Math.hypot(b.rt.x - site.x, b.rt.z - site.z) < 26; b.rt.mesh.userData.cast = c; b.rt.mesh.castShadow = Q.shadow > 0 && c; } });
@@ -1128,6 +1189,7 @@ function startNextSite(glide) {
 /* ============================================================
    TOWN LAYOUT & CAMERA
    ============================================================ */
+let rotDir = 0;
 const cam = { target: new V3(), distBase: 30, zoom: 1, zoomT: 1, az: 0.35, azT: 0.35, pitch: CONFIG.pitchDeg * Math.PI / 180, pitchT: CONFIG.pitchDeg * Math.PI / 180,
   glide: null, fitR: CONFIG.fitRadius, fitH: 4, away: false, zMin: CONFIG.zoomMin, zMax: CONFIG.zoomMax };
 function fitDist(R, H) {
@@ -1144,6 +1206,7 @@ function camFocusSite(dur) { if (!site) return; cam.away = false; camFocus(site.
 function updateCamera(dt) {
   if (cam.glide) { const g = cam.glide; g.t += dt / g.dur; const u = easeInOut(Math.min(1, g.t)); cam.target.lerpVectors(g.from, g.to, u); cam.distBase = lerp(g.d0, g.d1, u); if (g.t >= 1) cam.glide = null; }
   else cam.distBase = lerp(cam.distBase, fitDist(cam.fitR, cam.fitH), 1 - Math.exp(-6 * dt));
+  if (rotDir) cam.azT += rotDir * 1.7 * dt;
   const k = 1 - Math.exp(-12 * dt);
   cam.az += (cam.azT - cam.az) * k; cam.pitch += (cam.pitchT - cam.pitch) * k; cam.zoom += (cam.zoomT - cam.zoom) * k;
   const d = cam.distBase * cam.zoom, cp = Math.cos(cam.pitch);
@@ -1182,8 +1245,9 @@ function randBrickColor(out) {
 function spawnR() { return clamp(cam.fitR * 0.92, (site ? site.R : 3) + 1.8, 8.5); }
 function spawnBrick(pop) {
   if (!site) return;
-  const a = Math.random() * TAU, r = lerp(site.R + 0.9, spawnR(), Math.sqrt(Math.random())), k = 1, B = CONFIG.brick;
-  const b = { st: 'idle', x: site.x + Math.cos(a) * r, y: 0, z: site.z + Math.sin(a) * r, yaw: Math.random() * TAU, w: B.L * (0.55 + Math.random() * 1.1), h: B.H * (1 + Math.floor(Math.random() * 3)), d: B.T * (0.8 + Math.random() * 0.45), col: randBrickColor(new C3()), lift: 0, hot: 0, pop: pop ? 0 : 1, out: 0 };
+  let sx0 = 0, sz0 = 0; for (let t = 0; t < 8; t++) { const a = Math.random() * TAU, r = lerp(site.R + 0.9, spawnR(), Math.sqrt(Math.random())); sx0 = site.x + Math.cos(a) * r; sz0 = site.z + Math.sin(a) * r; if (!terrainBlocked(sx0, sz0, 0.5)) break; }
+  const k = 1, B = CONFIG.brick;
+  const b = { st: 'idle', x: sx0, y: 0, z: sz0, yaw: Math.random() * TAU, w: B.L * (0.55 + Math.random() * 1.1), h: B.H * (1 + Math.floor(Math.random() * 3)), d: B.T * (0.8 + Math.random() * 0.45), col: randBrickColor(new C3()), lift: 0, hot: 0, pop: pop ? 0 : 1, out: 0 };
   loose.push(b); if (pop) sparkle(b.x, 0.4, b.z, 3, 0.8);
 }
 function refreshLooseForNewSite() {
@@ -1295,6 +1359,112 @@ function updateOrb(dt, t) {
 }
 
 /* ============================================================
+   TERRAIN — what the town sits beside: river | hill | neighbor town | road
+   ============================================================ */
+const TERR = { kind: 'none', seed: 1, pts: [], width: 0, hill: null, nb: null, mesh: null, fake: [], links: [] };
+const TERR_KINDS = ['river', 'hill', 'neighbor', 'road'];
+const TERR_LABEL = { river: 'a river', hill: 'a hill', neighbor: 'another town', road: 'a road', none: 'open meadow' };
+function terrainInit(kind, seed) {
+  Object.assign(TERR, { kind, seed, pts: [], width: 0, hill: null, nb: null, links: [] });
+  const rng = mulberry32(seed), a0 = rng() * TAU, ux = Math.cos(a0), uz = Math.sin(a0), tx = -uz, tz = ux, phi = rng() * 6;
+  if (kind === 'river' || kind === 'road') {
+    const d = kind === 'river' ? 28 : 25, amp = kind === 'river' ? 6 : 3.5;
+    for (let sd = -170; sd <= 170; sd += 5) { const w = Math.sin(sd * 0.045 + phi) * amp + Math.sin(sd * 0.11 + phi * 2) * 1.6; TERR.pts.push([ux * (d + w) + tx * sd, uz * (d + w) + tz * sd]); }
+    TERR.width = kind === 'river' ? 8 : 4.8;
+  } else if (kind === 'hill') TERR.hill = { x: ux * 33, z: uz * 33, r: 15, h: 10, ux, uz };
+  else if (kind === 'neighbor') TERR.nb = { x: ux * 46, z: uz * 46, r: 16, ux, uz };
+  if (kind === 'road') { let bi = 0, bd = 1e9; TERR.pts.forEach((q, i) => { const d = Math.hypot(q[0], q[1]); if (d < bd) { bd = d; bi = i; } }); TERR.links.push([0, 0, TERR.pts[bi][0], TERR.pts[bi][1]]); }
+  if (kind === 'neighbor') TERR.links.push([0, 0, TERR.nb.x, TERR.nb.z]);
+}
+function distToPts(x, z) {
+  let m = 1e9; const P = TERR.pts;
+  for (let i = 0; i < P.length - 1; i++) { const d = distToSeg(x, z, P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]); if (d < m) m = d; }
+  return m;
+}
+function terrainBlocked(x, z, r) {
+  switch (TERR.kind) {
+    case 'river': return distToPts(x, z) < TERR.width / 2 + r + 0.8;
+    case 'road': return distToPts(x, z) < TERR.width / 2 + r + 0.6;
+    case 'hill': return Math.hypot(x - TERR.hill.x, z - TERR.hill.z) < TERR.hill.r + r;
+    case 'neighbor': return Math.hypot(x - TERR.nb.x, z - TERR.nb.z) < TERR.nb.r + r + 1;
+  }
+  return false;
+}
+function ribbonGeo(pts, hw, y, cE, cM) {
+  const n = pts.length, Lp = [], Cp = [], Rp = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)]; let dx = b[0] - a[0], dz = b[1] - a[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    Lp.push([pts[i][0] - dz * hw, y, pts[i][1] + dx * hw]); Cp.push([pts[i][0], y, pts[i][1]]); Rp.push([pts[i][0] + dz * hw, y, pts[i][1] - dx * hw]);
+  }
+  const pos = [], col = [];
+  const tri = (a, b, c, ca, cb, cc) => {
+    if ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) < 0) { let t = b; b = c; c = t; t = cb; cb = cc; cc = t; }
+    pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); col.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+  };
+  for (let i = 0; i < n - 1; i++) {
+    tri(Lp[i], Cp[i], Cp[i + 1], cE, cM, cM); tri(Lp[i], Cp[i + 1], Lp[i + 1], cE, cM, cE);
+    tri(Cp[i], Rp[i], Rp[i + 1], cM, cE, cE); tri(Cp[i], Rp[i + 1], Cp[i + 1], cM, cE, cM);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+}
+function clearTerrain() {
+  if (TERR.mesh) { scene.remove(TERR.mesh); TERR.mesh.geometry.dispose(); TERR.mesh = null; }
+  TERR.fake.forEach(b => disposeBuildingObject(b)); TERR.fake = [];
+}
+function buildTerrain() {
+  clearTerrain(); const geos = [], k = TERR.kind;
+  if (k === 'river') {
+    geos.push(ribbonGeo(TERR.pts, TERR.width / 2 + 1.3, 0.02, new C3('#efe2b8'), new C3('#efe2b8')));
+    geos.push(ribbonGeo(TERR.pts, TERR.width / 2, 0.045, new C3('#a9defa'), new C3('#6cc0ee')));
+  } else if (k === 'road') {
+    geos.push(ribbonGeo(TERR.pts, TERR.width / 2 + 0.4, 0.02, new C3('#e8dfc8'), new C3('#e8dfc8')));
+    geos.push(ribbonGeo(TERR.pts, TERR.width / 2, 0.035, new C3('#cfc5b0'), new C3('#c4b9a2')));
+    for (let i = 0; i < TERR.pts.length - 1; i += 2) geos.push(ribbonGeo([TERR.pts[i], TERR.pts[i + 1]], 0.13, 0.05, PC.cream, PC.cream));
+  } else if (k === 'hill') {
+    const h = TERR.hill, g = new THREE.IcosahedronGeometry(1, 3).toNonIndexed(), pa = g.attributes.position, col = new Float32Array(pa.count * 3);
+    for (let i = 0; i < pa.count; i++) {
+      const x = pa.getX(i), y = Math.max(pa.getY(i), -0.04), z = pa.getZ(i);
+      pa.setXYZ(i, h.x + x * h.r * (1 + 0.07 * Math.sin(z * 5)), y * h.h * (1 + 0.14 * Math.sin(x * 4 + z * 3)), h.z + z * h.r * (1 + 0.07 * Math.sin(x * 5)));
+    }
+    for (let t = 0; t < pa.count; t += 3) {
+      const u = clamp((pa.getY(t) + pa.getY(t + 1) + pa.getY(t + 2)) / 3 / h.h, 0, 1); _c.copy(PC.hillA).lerp(PC.hillB, u);
+      for (let q = 0; q < 3; q++) { col[(t + q) * 3] = _c.r; col[(t + q) * 3 + 1] = _c.g; col[(t + q) * 3 + 2] = _c.b; }
+    }
+    g.deleteAttribute('uv'); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals(); geos.push(g);
+  }
+  if (geos.length) { TERR.mesh = new THREE.Mesh(mergeGeos(geos), litMat('vc')); TERR.mesh.userData.lk = 'vc'; shadowFlags(TERR.mesh, false, true); TERR.mesh.frustumCulled = false; scene.add(TERR.mesh); }
+  if (k === 'neighbor') {
+    const nb = TERR.nb, rng = mulberry32(TERR.seed + 99), pts = [], types = Object.keys(CONFIG.buildings);
+    for (let t = 0; t < 300 && pts.length < 6; t++) { const a = rng() * TAU, r = Math.sqrt(rng()) * (nb.r - 4), x = nb.x + Math.cos(a) * r, z = nb.z + Math.sin(a) * r; if (pts.every(q => Math.hypot(q[0] - x, q[1] - z) > 11)) pts.push([x, z]); }
+    pts.forEach((q, i) => {
+      const seed = (TERR.seed * 7 + i * 131) | 0, r2 = mulberry32(seed), b = { id: -(i + 1), type: types[Math.floor(r2() * types.length)], lot: q, seed, colors: { wall: Math.floor(r2() * 5), wall2: Math.floor(r2() * 5), roof: Math.floor(r2() * 5) }, custom: false, salt: 0 };
+      b.name = rawName(b, 0); buildBuildingObject(b, false); b.rt.mesh.userData.cast = false; TERR.fake.push(b);
+    });
+  }
+}
+function addTerrainDecor() {
+  const k = TERR.kind; if (k === 'none') return;
+  const rng = mulberry32(TERR.seed + 7), tree = (x, z) => { const sc = 0.8 + rng() * 0.6; lsAdd('tree', x, 0, z, rng() * 3, sc, sc, sc, PC.foliage[Math.floor(rng() * 3)], 0, false); };
+  if (k === 'river' || k === 'road') {
+    const P = TERR.pts;
+    for (let i = 0; i < (k === 'river' ? 30 : 18); i++) { const q = P[Math.floor(rng() * P.length)], l = Math.hypot(q[0], q[1]) || 1, off = TERR.width / 2 + 3 + rng() * 9; tree(q[0] + q[0] / l * off, q[1] + q[1] / l * off); }
+    if (k === 'road') for (let i = 0; i < P.length; i += 3) { const q = P[i], l = Math.hypot(q[0], q[1]) || 1, off = TERR.width / 2 + 0.9; lsAdd('lamp', q[0] - q[0] / l * off, 0, q[1] - q[1] / l * off, 0, 1, 1, 1, null, 0, false); }
+  } else if (k === 'hill') {
+    const h = TERR.hill;
+    for (let i = 0; i < 16; i++) { const a = Math.atan2(h.uz, h.ux) + (rng() - 0.5) * 2.6, r = h.r + 0.5 + rng() * 4; tree(h.x + Math.cos(a) * r, h.z + Math.sin(a) * r); }
+  } else if (k === 'neighbor') {
+    const nb = TERR.nb;
+    for (let i = 0; i < 18; i++) { const a = rng() * TAU, r = Math.sqrt(rng()) * (nb.r + 2), x = nb.x + Math.cos(a) * r, z = nb.z + Math.sin(a) * r; if (TERR.fake.every(f => Math.hypot(f.lot[0] - x, f.lot[1] - z) > f.rt.R + 1.5)) tree(x, z); }
+    TERR.fake.forEach((f, i) => { if (!i) return; let best = null, bd = 1e9; for (let j = 0; j < i; j++) { const d = Math.hypot(f.lot[0] - TERR.fake[j].lot[0], f.lot[1] - TERR.fake[j].lot[1]); if (d < bd) { bd = d; best = TERR.fake[j]; } } if (best) streetStones(f.lot[0], f.lot[1], f.rt.R, best.lot[0], best.lot[1], best.rt.R, f.seed, false, false); });
+  }
+  TERR.links.forEach((g, i) => { if (k === 'neighbor') { const f = TERR.fake[0]; streetStones(0, 0, CONFIG.plazaRadius - 1, g[2], g[3], 6, TERR.seed + 31, false, false); } else streetStones(0, 0, CONFIG.plazaRadius - 1, g[2], g[3], 2.2, TERR.seed + 31, false, false); });
+}
+function newSetting(kind) {
+  const k = kind && kind !== 'random' ? kind : TERR_KINDS[Math.floor(Math.random() * TERR_KINDS.length)];
+  return { kind: k, seed: (Math.random() * 2147483647) | 0 };
+}
+
+/* ============================================================
    LANDSCAPE (InstancedMesh per item type, seeded per building)
    ============================================================ */
 const ico = (r, d) => new THREE.IcosahedronGeometry(r, d || 0), cyl = (a, b, h, s) => new THREE.CylinderGeometry(a, b, h, s || 6), box = (x, y, z) => new THREE.BoxGeometry(x, y, z);
@@ -1358,26 +1528,26 @@ function addPlaza() {
   const R = CONFIG.plazaRadius - 1.0;
   for (let i = 0; i < 8; i++) { const a = (22.5 + i * 45) * Math.PI / 180; lsAdd('bench', Math.cos(a) * R, 0, Math.sin(a) * R, -a + Math.PI / 2, 1, 1, 1, PC.stone, 0, false); }
 }
-const CARD = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
-function nearCardinal(a) { for (const c of CARD) if (Math.abs(wrapAng(a - c)) < 0.34) return true; return false; }
 const rotXZ = (x, z, yaw) => [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
 
 function genGarden(b, animate) {
   const L = layoutFor(b), rng = mulberry32(b.seed * 7 + 13), cx = lotPos(b.lot).x, cz = lotPos(b.lot).z, R = L.R, yaw = yawOf(b, L.cfg.role);
-  const d = Q.garden / 1.6, first = b.lot[0] === 0 && b.lot[1] === 0, shop = L.cfg.role === 'shop';
+  const d = Q.garden / 1.6, first = Math.hypot(cx, cz) < 0.1, shop = L.cfg.role === 'shop';
+  const corr = connectionsOf(b).map(c => Math.atan2(c.z - cz, c.x - cx)); if (TERR.link0 && first) corr.length = 0;
+  const nearC = a => corr.some(c => Math.abs(wrapAng(a - c)) < 0.4);
   const placed = []; let order = 0;
   const place = (minR, maxR, clr) => {
     for (let k = 0; k < 14; k++) {
-      const a = rng() * TAU, r = lerp(minR, maxR, Math.sqrt(rng())); if (nearCardinal(a)) continue;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r; let ok = true;
+      const a = rng() * TAU, r = lerp(minR, maxR, Math.sqrt(rng())); if (nearC(a)) continue;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r; let ok = !terrainBlocked(cx + x, cz + z, 0.6);
       for (const p of placed) if (Math.hypot(p[0] - x, p[1] - z) < p[2] + clr) { ok = false; break; }
       if (ok) { placed.push([x, z, clr]); return [x, z]; }
     }
     return null;
   };
-  const lo = R + 0.35, hi = Math.max(lo + 0.8, 5.7);
+  const lo = R + 0.35, hi = lo + 1.9;
   const add = (type, x, z, ry, s, color, count, idx, y) => {
-    if (idx >= Math.ceil(count * d)) return;
+    if (idx >= Math.ceil(count * d) || terrainBlocked(cx + x, cz + z, 0.2)) return;
     lsAdd(type, cx + x, y || 0, cz + z, ry, s, s, s, color, animate ? 0.1 + (order++ % 40) * 0.05 + rng() * 0.3 : 0, animate);
   };
   const pickC = arr => arr[Math.floor(rng() * arr.length)];
@@ -1389,7 +1559,7 @@ function genGarden(b, animate) {
   // lamp posts on diagonals
   for (let i = 0; i < 2; i++) { const a = (45 + 90 * Math.floor(rng() * 4)) * Math.PI / 180, r = lo + 0.25; placed.push([Math.cos(a) * r, Math.sin(a) * r, 0.4]); add('lamp', Math.cos(a) * r, Math.sin(a) * r, 0, 1, null, 2, i); }
   // fences
-  for (let f = 0; f < 2; f++) { const a0 = rng() * TAU; for (let i = 0; i < 5; i++) { const a = a0 + i * 0.22, r = lo + 0.1; if (nearCardinal(a) || first) continue; add('fence', Math.cos(a) * r, Math.sin(a) * r, -a + Math.PI / 2, 1, null, 5, i); } }
+  for (let f = 0; f < 2; f++) { const a0 = rng() * TAU; for (let i = 0; i < 5; i++) { const a = a0 + i * 0.22, r = lo + 0.1; if (nearC(a) || first) continue; add('fence', Math.cos(a) * r, Math.sin(a) * r, -a + Math.PI / 2, 1, null, 5, i); } }
   // bushes
   for (let i = 0; i < 6; i++) { const p = place(lo, hi, 0.7), col = pickC(PC.foliage), s = 0.7 + rng() * 0.5; if (p) add('bush', p[0], p[1], rng() * 3, s, col, 6, i); }
   // flower clusters
@@ -1407,24 +1577,31 @@ function genGarden(b, animate) {
   if (!first) lsAdd('lush', cx, 0.015, cz, 0, R + 3.2, 1, R + 3.2, null, animate ? 0.3 : 0, animate);
   lsAdd('blob', cx, 0.03, cz, 0, R * 1.35, 1, R * 1.35, null, 0, false);
 }
-function addPaths(b, animate) {
-  const S0 = CONFIG.lotSpacing;
-  for (const o of S.buildings) {
-    if (o.id >= b.id) continue; const dx = o.lot[0] - b.lot[0], dz = o.lot[1] - b.lot[1];
-    if (Math.abs(dx) + Math.abs(dz) !== 1 || !o.rt) continue;
-    const rng = mulberry32(b.seed + o.seed), dirt = rng() < 0.4, ra = (b.rt ? b.rt.R : layoutFor(b).R), rb = o.rt.R;
-    const len = S0 - ra - rb - 0.3, n = Math.floor(len / 0.62), ax = lotPos(b.lot), ux = dx, uz = dz;
-    for (let i = 0; i < n; i++) {
-      const s = ra + 0.15 + (i + 0.5) * len / n, lat = (rng() - 0.5) * 0.18;
-      const x = ax.x + ux * s - uz * lat, z = ax.z + uz * s + ux * lat, col = new C3('#d9d0bd').multiplyScalar(0.97 + rng() * 0.06), sc = 0.8 + rng() * 0.35;
-      lsAdd('stone', x, 0.01, z, rng() * 3, sc, 1, sc, col, animate ? 0.4 + i * 0.06 : 0, animate);
-    }
+function lsNear(x, z, r) {
+  for (const nm of ['tree', 'bush', 'lamp', 'pond', 'mush']) { const t = LS.types[nm]; if (!t) continue; for (let i = 0; i < t.n; i++) { const q = t.data[i]; if (Math.abs(q.x - x) < r && Math.abs(q.z - z) < r && Math.hypot(q.x - x, q.z - z) < r) return true; } }
+  return false;
+}
+/* cobblestone street between two circular footprints (gentle curve, skips trees/water) */
+function streetStones(ax, az, ar, bx, bz, br, seed, animate, checkTerr) {
+  const rng = mulberry32(seed), dx = bx - ax, dz = bz - az, dist = Math.hypot(dx, dz); if (dist < ar + br + 1) return;
+  const ux = dx / dist, uz = dz / dist, sA = ar * 0.92 + 0.15, sB = dist - (br * 0.92 + 0.15), len = sB - sA, n = Math.floor(len / 0.72); if (n < 1) return;
+  const bend = (rng() - 0.5) * Math.min(5, dist * 0.28), px = -uz, pz = ux;
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n, sd = sA + len * t, off = bend * Math.sin(Math.PI * t) + (rng() - 0.5) * 0.18;
+    const x = ax + ux * sd + px * off, z = az + uz * sd + pz * off, sc = 1.1 + rng() * 0.35, ry = rng() * 3, col = new C3('#cdbfa6').multiplyScalar(0.96 + rng() * 0.08);
+    if (lsNear(x, z, 0.85) || (checkTerr && terrainBlocked(x, z, -0.8))) continue;
+    lsAdd('stone', x, 0.01, z, ry, sc, 1, sc, col, animate ? 0.4 + i * 0.05 : 0, animate);
   }
+}
+function addPaths(b, animate) {
+  const q = lotPos(b.lot), ra = layoutFor(b).R;
+  for (const c of connectionsOf(b)) streetStones(q.x, q.z, ra, c.x, c.z, layoutFor(c.o).R, b.seed + c.o.seed, animate, true);
 }
 function growGarden(b) { genGarden(b, true); addPaths(b, true); }
 function rebuildLandscape() {
   lsClear(); addPlaza();
   S.buildings.forEach(b => { if (!b.rt) return; genGarden(b, false); addPaths(b, false); });
+  addTerrainDecor();
 }
 
 /* ============================================================
@@ -1626,6 +1803,8 @@ const ICONS = {
   tag: svgI('<rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="#ffd36e"/><path d="M9 13.5h14M9 18.5h8" stroke-width="2.4"/>'),
   dice: svgI('<rect x="3.5" y="3.5" width="25" height="25" rx="7.5" fill="#fff3dc"/><circle cx="11" cy="11" r="2.3" fill="#ff8fa8" stroke="none"/><circle cx="21" cy="11" r="2.3" fill="#58b8f0" stroke="none"/><circle cx="16" cy="16" r="2.3" fill="#ffd36e" stroke="none"/><circle cx="11" cy="21" r="2.3" fill="#6fd49c" stroke="none"/><circle cx="21" cy="21" r="2.3" fill="#b79cf0" stroke="none"/>'),
   pencil: svgI('<path d="M6 26l1.6-6.4L21 6.2l4.8 4.8L12.4 24.4z" fill="#ffd36e"/><path d="M19 8.2l4.8 4.8" stroke-width="1.8"/><path d="M6 26l1.6-6.4 4.8 4.8z" fill="#ff8fa8"/>'),
+  rotL: svgI('<path d="M22 7.5A10.5 10.5 0 1 0 26.5 18" stroke-width="3.2" stroke="#6a4d2a"/><path d="M26.8 4.5v9.5h-9.5z" fill="#ff8fa8"/>'),
+  rotR: svgI('<g transform="translate(32 0) scale(-1 1)"><path d="M22 7.5A10.5 10.5 0 1 0 26.5 18" stroke-width="3.2" stroke="#6a4d2a"/><path d="M26.8 4.5v9.5h-9.5z" fill="#ff8fa8"/></g>'),
   finger: svgI('<circle cx="16" cy="3.6" r="2.4" stroke="#ff9a4a" stroke-width="1.7"/><rect x="12.8" y="5.5" width="6.4" height="17" rx="3.2" fill="#ffd2a8"/><rect x="8" y="16" width="16" height="12.5" rx="5.5" fill="#ffd2a8"/><ellipse cx="7.6" cy="21.5" rx="2.6" ry="3.6" transform="rotate(-18 7.6 21.5)" fill="#ffd2a8"/><path d="M14.2 22.5v3.5M18 22.5v3.5" stroke-width="1.5"/>')
 };
 const ic = (n, st) => '<i class="ic"' + (st ? ' style="' + st + '"' : '') + '>' + ICONS[n] + '</i>';
@@ -1675,6 +1854,11 @@ $('label').onclick = () => {
 };
 $('btnTown').onclick = () => nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen());
 $('btnSound').onclick = () => { S.settings.sound = !S.settings.sound; Audio.init(); refreshUI(); saveSoon(); };
+[['btnRotL', -1], ['btnRotR', 1]].forEach(([id, dir]) => {
+  const el = $(id); el.style.pointerEvents = 'auto';
+  el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); cam.azT += dir * 0.3; rotDir = dir; });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, () => { rotDir = 0; }));
+});
 function setExplore(on) {
   S.explore = on; $('btnExplore').classList.toggle('on', on); hold.active = false; $('hint').style.display = 'none';
   if (on) { cam.zMin = 0.4; cam.zMax = 3.2; cam.away = true; } else { cam.zMin = CONFIG.zoomMin; cam.zMax = CONFIG.zoomMax; cam.zoomT = clamp(cam.zoomT, cam.zMin, cam.zMax); camFocusSite(1.0); }
@@ -1696,7 +1880,7 @@ function focusBuilding(b) { S.selected = b.id; updateLabelText(); cam.away = tru
 function menuHTML() {
   const th = CONFIG.palettes.map((p, i) => '<button class="pill' + (i === S.themeIdx ? ' on' : '') + '" data-theme="' + i + '"><span class="sw" style="background:' + p.walls[0] + '"></span><span class="sw" style="background:' + p.walls[1] + '"></span>' + esc(p.name) + '</button>').join('');
   const qs = ['auto', 'LOW', 'MEDIUM', 'HIGH'].map(q => '<button class="pill' + (S.settings.quality === q ? ' on' : '') + '" data-q="' + q + '">' + (q === 'auto' ? 'Auto' : CONFIG.quality[q].label) + '</button>').join('');
-  return '<h3>' + esc(GAME_NAME) + '</h3><h4>Palette</h4><div class="row">' + th + '</div><h4>Quality (now: ' + CONFIG.quality[tierName].label + ')</h4><div class="row">' + qs + '</div><h4>Town</h4><div class="row"><button class="pill t-butter" data-act="rename">' + ic('pencil') + 'Rename town</button><button class="pill t-peach" data-act="reset">Reset town…</button><button class="pill" data-close="1">Close</button></div>';
+  return '<h3>' + esc(GAME_NAME) + '</h3><h4>Palette</h4><div class="row">' + th + '</div><h4>Quality (now: ' + CONFIG.quality[tierName].label + ')</h4><div class="row">' + qs + '</div><h4>Town sits beside ' + esc(TERR_LABEL[TERR.kind] || '') + '</h4><div class="row"><button class="pill t-butter" data-act="rename">' + ic('pencil') + 'Rename town</button><button class="pill t-peach" data-act="reset">Reset town…</button><button class="pill" data-close="1">Close</button></div>';
 }
 function bindMenu(el) {
   el.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { setTheme(+b.dataset.theme); refreshMenuIfOpen(); saveSoon(); });
@@ -1704,7 +1888,7 @@ function bindMenu(el) {
   const rn = el.querySelector('[data-act="rename"]');
   if (rn) rn.onclick = () => { closeModal(); nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen()); };
   const r = el.querySelector('[data-act="reset"]');
-  if (r) r.onclick = () => { modalEl.firstChild.innerHTML = '<h3>Reset town?</h3><div>This deletes every building and starts a fresh town. It can\'t be undone.</div><div class="row"><button class="pill" id="rsYes">Yes, reset</button><button class="pill" id="rsNo">Keep my town</button></div>'; $('rsYes').onclick = () => { closeModal(); resetTown(); }; $('rsNo').onclick = () => { closeModal(); }; };
+  if (r) r.onclick = () => { modalEl.firstChild.innerHTML = '<h3>Start a new town?</h3><div>This deletes every building. It can\'t be undone. Where should the new town sit?</div><div class="row">' + [['river', 'A river'], ['hill', 'A hill'], ['neighbor', 'Another town'], ['road', 'A road'], ['random', 'Surprise me']].map(q => '<button class="pill t-sky" data-setting="' + q[0] + '">' + q[1] + '</button>').join('') + '</div><div class="row"><button class="pill t-peach" id="rsNo">Keep my town</button></div>'; modalEl.firstChild.querySelectorAll('[data-setting]').forEach(b => b.onclick = () => { closeModal(); resetTown(b.dataset.setting); }); $('rsNo').onclick = () => { closeModal(); }; };
 }
 function refreshMenuIfOpen() { if (menuOpen && modalOpen) { modalEl.firstChild.innerHTML = menuHTML(); bindMenu(modalEl.firstChild); } }
 $('btnMenu').onclick = () => { openModal(menuHTML(), bindMenu); menuOpen = true; };
@@ -1731,7 +1915,7 @@ function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 6
 function saveNow() {
   clearTimeout(saveTimer);
   try {
-    const data = { schemaVersion: CONFIG.schemaVersion, townName: S.townName, theme: S.themeIdx, settings: S.settings, nextId: S.nextId, lotCount: S.lotCount, history: S.history,
+    const data = { schemaVersion: CONFIG.schemaVersion, townName: S.townName, theme: S.themeIdx, settings: S.settings, nextId: S.nextId, lotCount: S.lotCount, history: S.history, setting: S.setting,
       buildings: S.buildings.map(b => ({ id: b.id, type: b.type, lot: b.lot, colors: b.colors, seed: b.seed, name: b.name, custom: b.custom, salt: b.salt || 0 })), cur: S.cur };
     localStorage.setItem(CONFIG.saveKey, JSON.stringify(data));
   } catch (e) {}
@@ -1739,7 +1923,7 @@ function saveNow() {
 function loadSave() {
   try {
     const raw = localStorage.getItem(CONFIG.saveKey); if (!raw) return null;
-    const d = JSON.parse(raw); if (!d || d.schemaVersion !== CONFIG.schemaVersion || !Array.isArray(d.buildings)) return null;
+    const d = JSON.parse(raw); if (!d || (d.schemaVersion !== CONFIG.schemaVersion && d.schemaVersion !== 1) || !Array.isArray(d.buildings)) return null;
     const okLot = l => Array.isArray(l) && l.length === 2 && Number.isFinite(l[0]) && Number.isFinite(l[1]);
     const okCol = c => c && Number.isFinite(c.wall) && Number.isFinite(c.wall2) && Number.isFinite(c.roof);
     const bs = d.buildings.filter(b => b && CONFIG.buildings[b.type] && okLot(b.lot) && okCol(b.colors) && Number.isFinite(b.seed));
@@ -1752,21 +1936,23 @@ function applySave(d) {
   S.townName = String(d.townName || townNameGen()).slice(0, 24); S.themeIdx = clamp(d.theme | 0, 0, CONFIG.palettes.length - 1);
   Object.assign(S.settings, d.settings || {}); S.nextId = d.nextId | 0 || 1; S.lotCount = d.lotCount | 0; S.history = Array.isArray(d.history) ? d.history.slice(-6) : [];
   S.buildings = d.buildings.map(b => ({ id: b.id, type: b.type, lot: b.lot, colors: b.colors, seed: b.seed, name: String(b.name || ''), custom: !!b.custom, salt: b.salt | 0 }));
-  S.cur = d.cur || null;
+  S.cur = d.cur || null; S.setting = d.setting && d.setting.kind ? d.setting : { kind: 'none', seed: 1 };
+  if (d.schemaVersion === 1) { const sc = l => [l[0] * 12, l[1] * 12]; S.buildings.forEach(b => b.lot = sc(b.lot)); if (S.cur) S.cur.lot = sc(S.cur.lot); }   // old grid saves -> world coords
 }
 window.addEventListener('pagehide', saveNow);
 
 /* ============================================================
    RESET / BOOT HELPERS
    ============================================================ */
-function resetTown() {
+function resetTown(kind) {
+  S.setting = newSetting(kind); terrainInit(S.setting.kind, S.setting.seed); clearTerrain();
   S.buildings.forEach(b => disposeBuildingObject(b)); S.buildings = []; S.history = []; S.nextId = 1; S.lotCount = 0; S.selected = null; S.cur = null;
   timers.length = 0; tweens.length = 0; flags.length = 0;
   if (site) { scene.remove(site.group); site.mesh.dispose(); site = null; }
   loose.length = 0; flying = 0; Object.keys(layoutCache).forEach(k => delete layoutCache[k]);
-  S.townName = townNameGen(); lsClear(); addPlaza(); updateLabelText();
+  S.townName = townNameGen(); updateLabelText();
   const rec = newRec(); S.cur = { type: rec.type, lot: rec.lot, seed: rec.seed, colors: rec.colors, placed: 0 }; createSite(rec, 0); refreshLooseForNewSite(); camFocusSite(0.8);
-  refreshUI(); saveNow();
+  buildTerrain(); rebuildLandscape(); refreshUI(); saveNow();
 }
 
 /* ============================================================
@@ -1813,13 +1999,14 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
    BOOT
    ============================================================ */
 (function boot() {
-  const d = loadSave(); if (d) applySave(d); else S.townName = townNameGen();
+  const d = loadSave(); if (d) applySave(d); else { S.townName = townNameGen(); S.setting = newSetting(); }
+  terrainInit(S.setting.kind, S.setting.seed);
   if (S.settings.quality !== 'auto' && CONFIG.quality[S.settings.quality]) { tierName = S.settings.quality; Q = CONFIG.quality[tierName]; } else S.settings.quality = 'auto';
   applyQuality(tierName, true); prevBevel = Q.bevel;
   swapBrickGeometry(); setTheme(S.themeIdx, true);
   resize();
   S.buildings.forEach(b => { if (!b.name) b.name = genName(b); buildBuildingObject(b); });
-  addPlaza(); S.buildings.forEach(b => { genGarden(b, false); addPaths(b, false); });
+  buildTerrain(); rebuildLandscape();
   let rec, placed = 0;
   if (S.cur) { rec = { type: S.cur.type, lot: S.cur.lot, seed: S.cur.seed, colors: S.cur.colors }; placed = clamp(S.cur.placed | 0, 0, layoutFor(rec).slots.length - 1); }
   else { rec = newRec(); S.cur = { type: rec.type, lot: rec.lot, seed: rec.seed, colors: rec.colors, placed: 0 }; }

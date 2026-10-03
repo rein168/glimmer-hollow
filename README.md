@@ -5,12 +5,18 @@ A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file
 ## How to play
 - **Press and hold** anywhere: a glowing orb follows your finger (or mouse). Loose bricks inside its pickup ring glow, lift and fly to the build site.
 - **Move** to sweep up bricks faster. **Hold still** and the ring slowly grows while bricks drift toward the orb, so holding alone always makes progress.
+- **Rotate**: hold the round arrow buttons on the left/right edge to spin the view around your buildings (two-finger drag also orbits).
 - **🧭 Explore** (top right): one finger drags the town around so you can look at it; tap 🧭 again to fly back to the build site.
 - **Two fingers**: drag to orbit, pinch to zoom. One finger never moves the camera. On desktop: left-drag builds, right-drag orbits, wheel zooms.
 - Finished buildings get a shop name / family name / landmark name. Tap a building (or pick it in **Town List**) to show its label, then tap the label to rename or 🎲 re-roll.
 - **Photo**: frame a building or the whole town, toggle the caption badge, press the shutter. Share sheet where supported, otherwise a download.
 - **Menu**: 3 palettes, quality (Auto / Low / Medium / High), reset town.
 - Progress is saved automatically in `localStorage`.
+
+## Your town
+- Buildings are placed organically (not on a grid) and face the nearest street; cobblestone streets link each building to its neighbours.
+- A new town sits beside a **river**, a **hill**, **another town** or a **road** (random, or choose one in Menu → Reset town). Buildings keep clear of it.
+- Roofs are built from rows of big overlapping tiles; walls from mixed-size bricks.
 
 ## Deploy on GitHub Pages
 1. Put `index.html` and `README.md` in the root of a repository.
