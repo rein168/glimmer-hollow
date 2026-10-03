@@ -55,6 +55,10 @@ body.photo #label{display:none!important}
 .trow{background:#fff;border:2px solid var(--gold);border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .trow.cur{background:#fff3c4}.ta{display:flex;gap:6px;flex-wrap:wrap}.ta .pill{min-height:42px;padding:0 12px;font-size:14px}.ta .round{width:44px}
 .tt small{display:block;opacity:.7;font-weight:600;font-size:12px;margin-top:2px}.badge{background:#ffd36e;border-radius:999px;padding:2px 8px;font-size:11px;vertical-align:middle}
+.vrow{display:flex;flex-direction:column;gap:2px}
+.vrow label{display:flex;justify-content:space-between;font-weight:800;font-size:14px}
+.vrow small{font-weight:600;opacity:.65;font-size:12px}
+input[type=range]{width:100%;height:34px;accent-color:#ff9a4a;margin:0;touch-action:pan-x}
 .ver{opacity:.6;font-size:12px;text-align:center;font-weight:700;margin-top:4px}
 #flash{position:fixed;left:0;top:0;right:0;bottom:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .45s ease-out;z-index:20}
 #modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(90,70,40,.38);display:none;align-items:flex-start;justify-content:center;z-index:30;padding:calc(8vh + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl));box-sizing:border-box}
@@ -119,7 +123,7 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
-const VERSION = '0.14.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
+const VERSION = '0.14.1', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
@@ -1907,6 +1911,7 @@ const CHORDS = [
   { notes: [53, 57, 60, 64], root: 41, pent: [65, 67, 69, 72, 74] },   // Fmaj7
   { notes: [55, 59, 62, 64], root: 43, pent: [67, 69, 71, 74, 76] }    // G6
 ];
+function soundVol() { const v = S.settings.vol || {}; return { music: v.music == null ? 1 : v.music, amb: v.amb == null ? 1 : v.amb, sfx: v.sfx == null ? 1 : v.sfx }; }
 const Audio = {
   ctx: null, master: null, music: null, amb: null, sfx: null, verb: null, noise: null, water: null, panOk: false,
   last: 0, activity: 0, hamT: 2.5, layT: 4, birdT: 2, wT: 0, nextT: 0, step: 0, lastNote: 0, musicTimer: 0,
@@ -1928,8 +1933,18 @@ const Audio = {
       this.noise = nb; this.panOk = !!c.createStereoPanner;
       const sb = c.createBuffer(1, 1, 22050), ss = c.createBufferSource(); ss.buffer = sb; ss.connect(c.destination); ss.start(0);
       if (c.state === 'suspended') c.resume();
-      this.startWater(); this.startRustle(); this.sync(); this.nextT = c.currentTime + 0.6; this.musicTimer = setInterval(() => this.scheduleMusic(), 250);
+      this.startWater(); this.startRustle(); this.applyVolumes(); this.sync(); this.nextT = c.currentTime + 0.6; this.musicTimer = setInterval(() => this.scheduleMusic(), 250);
     } catch (e) { console.warn('audio init failed', e); this.ctx = null; }
+  },
+  applyVolumes() {
+    if (!this.ctx) return; const v = soundVol(), t = this.ctx.currentTime;
+    this.music.gain.setTargetAtTime(0.55 * v.music, t, 0.05); this.amb.gain.setTargetAtTime(v.amb, t, 0.05); this.sfx.gain.setTargetAtTime(v.sfx, t, 0.05);
+  },
+  preview(kind) {   // a short sample when a slider is released
+    if (!this.ctx || this.ctx.state !== 'running' || !S.settings.sound) return; const t = this.ctx.currentTime + 0.02;
+    if (kind === 'music') { this.pluck(mtof(72), t, 0.07); this.pluck(mtof(76), t + 0.18, 0.06); this.pluck(mtof(79), t + 0.36, 0.06); }
+    else if (kind === 'amb') { this.knock(t, 0.07, -0.3, 1250); this.knock(t + 0.22, 0.06, 0.3, 1250); this.chirps(0.8); }
+    else { this.knock(t, 0.08, 0, 1400, this.sfx); this.pluck(mtof(79), t + 0.02, 0.07, this.sfx); }
   },
   sync() {
     if (!this.ctx) return; const on = S.settings.sound && !S.paused && !S.hidden;
@@ -1973,12 +1988,12 @@ const Audio = {
       this.nextT += half;
     }
   },
-  knock(t, vol, pan, tone) {   // wood / stone knock
+  knock(t, vol, pan, tone, bus) {   // wood / stone knock
     const c = this.ctx, n = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain();
     n.buffer = this.noise; bp.type = 'bandpass'; bp.frequency.value = tone; bp.Q.value = 1.3; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
-    n.connect(bp); bp.connect(g); this.route(g, pan, this.amb, 0.25); n.start(t, Math.random(), 0.1);
+    n.connect(bp); bp.connect(g); this.route(g, pan, bus || this.amb, 0.25); n.start(t, Math.random(), 0.1);
     const o = c.createOscillator(), g2 = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(tone * 0.16, t); o.frequency.exponentialRampToValueAtTime(tone * 0.07, t + 0.09);
-    g2.gain.setValueAtTime(vol * 0.9, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.11); o.connect(g2); this.route(g2, pan, this.amb); o.start(t); o.stop(t + 0.15);
+    g2.gain.setValueAtTime(vol * 0.9, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.11); o.connect(g2); this.route(g2, pan, bus || this.amb); o.start(t); o.stop(t + 0.15);
   },
   hammer() {
     const c = this.ctx, pan = (Math.random() * 2 - 1) * 0.7, tone = [900, 1250, 1700][Math.floor(Math.random() * 3)], n = 1 + Math.floor(Math.random() * 3), vol = 0.05 + Math.min(1, this.activity) * 0.04;
@@ -2067,7 +2082,7 @@ const Audio = {
   tink(i) {   // a brick settles into place: stone clack + soft marimba note
     if (!S.settings.sound || !this.ctx || this.ctx.state !== 'running') return; const c = this.ctx, now = c.currentTime; if (now - this.last < 0.05) return; this.last = now;
     this.activity = Math.min(1.5, this.activity + 0.45);
-    this.knock(now, 0.06, (Math.random() * 2 - 1) * 0.3, 1400);
+    this.knock(now, 0.06, (Math.random() * 2 - 1) * 0.3, 1400, this.sfx);
     const pent = [523, 587, 659, 784, 880, 1047, 1175, 1318], f = pent[(Math.random() * pent.length) | 0];
     this.pluck(f, now + 0.01, 0.06, this.sfx);
   },
@@ -2082,7 +2097,7 @@ const Audio = {
   },
   shutter() {
     if (!S.settings.sound || !this.ctx) return; const c = this.ctx, t = c.currentTime;
-    this.knock(t, 0.08, 0, 2200); this.knock(t + 0.07, 0.06, 0, 1500);
+    this.knock(t, 0.08, 0, 2200, this.sfx); this.knock(t + 0.07, 0.06, 0, 1500, this.sfx);
   }
 };
 function audioEnv() {
@@ -2320,7 +2335,19 @@ $('label').onclick = () => {
   nameModal('Rename building', b.name, v => setBuildingName(b, v, true), () => { rerollName(b); return b.name; });
 };
 $('btnTown').onclick = () => nameModal('Rename town', S.townName, v => { S.townName = v; refreshUI(); saveSoon(); }, () => townNameGen());
-$('btnSound').onclick = () => { S.settings.sound = !S.settings.sound; Audio.init(); Audio.sync(); refreshUI(); saveSoon(); };
+function openSoundSheet() {
+  Audio.init();
+  const v = soundVol(), row = (k, label, hint) => '<div class="vrow"><label><span>' + label + '</span><b id="vp_' + k + '">' + Math.round(v[k] * 100) + '%</b></label><input type="range" min="0" max="100" step="1" value="' + Math.round(v[k] * 100) + '" data-vol="' + k + '" aria-label="' + label + ' volume"><small>' + hint + '</small></div>';
+  openModal('<h3>' + ic('soundOn') + 'Sound</h3>' + row('music', 'Music', 'The gentle background tune') + row('amb', 'Background sounds', 'Hammering, birds, water, wind, animals, traffic') + row('sfx', 'Effects', 'Brick clacks, button taps, camera') +
+    '<div class="row"><button class="pill ' + (S.settings.sound ? 't-peach' : 't-mint') + '" id="sndToggle">' + ic(S.settings.sound ? 'soundOff' : 'soundOn') + (S.settings.sound ? 'Mute all' : 'Unmute') + '</button><button class="pill" data-close="1">Done</button></div>', el => {
+    el.querySelectorAll('[data-vol]').forEach(inp => {
+      inp.oninput = () => { const k = inp.dataset.vol; S.settings.vol = Object.assign(soundVol(), { [k]: inp.value / 100 }); $('vp_' + k).textContent = inp.value + '%'; Audio.applyVolumes(); saveSoon(); };
+      inp.onchange = () => Audio.preview(inp.dataset.vol);
+    });
+    el.querySelector('#sndToggle').onclick = () => { S.settings.sound = !S.settings.sound; Audio.init(); Audio.sync(); refreshUI(); saveSoon(); openSoundSheet(); };
+  });
+}
+$('btnSound').onclick = () => openSoundSheet();
 [['btnRotL', -1], ['btnRotR', 1]].forEach(([id, dir]) => {
   const el = $(id); el.style.pointerEvents = 'auto';
   el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); cam.azT += dir * 0.3; rotDir = dir; });
