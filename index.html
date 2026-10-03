@@ -113,7 +113,7 @@ window.__ghBoot = true;
    CONFIG — all tunables live here
    ============================================================ */
 const GAME_NAME = 'Glimmer Hollow';
-const VERSION = '0.10.0', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
+const VERSION = '0.10.1', VERSION_DATE = '2026-10-03';   // bump on every release; shown in the Menu
 const PED_H = 0.25;
 const CONFIG = {
   saveKey: 'glimmerhollow.save', schemaVersion: 2,
@@ -991,21 +991,27 @@ function makePedestal(R) {
   g.add(cyl, ring, halo, blob); g.userData = { ring, halo, cyl, blob }; return g;
 }
 function scaffoldGeo(L, h) {
+  // every horizontal member runs between two vertical poles, and every pole reaches above the highest rail
   const parts = [], wood = '#' + PC.wood.getHexString(), plank = '#' + PC.wood.clone().multiplyScalar(1.2).getHexString(), hx = L.hx + 0.5, hz = L.hz + 0.5;
-  const poles = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]];
-  poles.forEach(p => parts.push(mk(new THREE.BoxGeometry(0.13, h, 0.13), wood, { x: p[0], y: h / 2, z: p[1] })));
+  const corners = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]], poles = [];
+  for (let i = 0; i < 4; i++) {          // corner poles + an extra pole at least every 2.8 units on long sides
+    const a = corners[i], b = corners[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(len / 2.8));
+    for (let k = 0; k < n; k++) poles.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+  }
+  poles.forEach(q => parts.push(mk(new THREE.BoxGeometry(0.13, h, 0.13), wood, { x: q[0], y: h / 2, z: q[1] })));
   let deck = -1;
-  for (let y = 0.9; y < h - 0.2; y += 1.2) {
-    deck = y;
+  for (let y = 0.9; y <= h - 0.15; y += 1.2) {
+    if (y + 0.95 <= h) deck = y;          // highest level whose guard rail still stays below the pole tops
     for (let i = 0; i < 4; i++) {
-      const a = poles[i], b = poles[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const a = corners[i], b = corners[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       parts.push(mk(new THREE.BoxGeometry(len, 0.07, 0.07), wood, { x: (a[0] + b[0]) / 2, y, z: (a[1] + b[1]) / 2, ry: Math.atan2(-(b[1] - a[1]), b[0] - a[0]) }));
     }
   }
-  if (deck > 0) for (let i = 0; i < 4; i++) {   // working platform at the highest level, with a guard rail
-    const a = poles[i], b = poles[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]), mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, l = Math.hypot(mx, mz) || 1, ry = Math.atan2(-(b[1] - a[1]), b[0] - a[0]);
-    parts.push(mk(new THREE.BoxGeometry(len, 0.06, 0.5), plank, { x: mx - mx / l * 0.28, y: deck + 0.05, z: mz - mz / l * 0.28, ry }));
-    parts.push(mk(new THREE.BoxGeometry(len, 0.06, 0.06), wood, { x: mx, y: deck + 0.9, z: mz, ry }));
+  if (deck > 0) for (let i = 0; i < 4; i++) {   // working platform resting on the bars of the deck level, with guard rails
+    const a = corners[i], b = corners[(i + 1) % 4], len = Math.hypot(b[0] - a[0], b[1] - a[1]), mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, ry = Math.atan2(-(b[1] - a[1]), b[0] - a[0]);
+    parts.push(mk(new THREE.BoxGeometry(len, 0.06, 0.55), plank, { x: mx, y: deck + 0.07, z: mz, ry }));
+    parts.push(mk(new THREE.BoxGeometry(len, 0.06, 0.06), wood, { x: mx, y: deck + 0.95, z: mz, ry }));
+    parts.push(mk(new THREE.BoxGeometry(len, 0.05, 0.05), wood, { x: mx, y: deck + 0.5, z: mz, ry }));
   }
   return mergeGeos(parts);
 }
