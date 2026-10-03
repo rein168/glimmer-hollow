@@ -1,0 +1,50 @@
+# Glimmer Hollow
+
+A cozy pastel low-poly diorama builder for phones, tablets and desktop. One file (`index.html`), three.js r160 loaded from jsDelivr, no build step, no import map, no addons.
+
+## How to play
+- **Press and hold** anywhere: a glowing orb follows your finger (or mouse). Loose bricks inside its pickup ring glow, lift and fly to the build site.
+- **Move** to sweep up bricks faster. **Hold still** and the ring slowly grows while bricks drift toward the orb, so holding alone always makes progress.
+- **Two fingers**: drag to orbit, pinch to zoom. One finger never moves the camera. On desktop: left-drag builds, right-drag orbits, wheel zooms.
+- Finished buildings get a shop name / family name / landmark name. Tap a building (or pick it in **Town List**) to show its label, then tap the label to rename or 🎲 re-roll.
+- **Photo**: frame a building or the whole town, toggle the caption badge, press the shutter. Share sheet where supported, otherwise a download.
+- **Menu**: 3 palettes, quality (Auto / Low / Medium / High), reset town.
+- Progress is saved automatically in `localStorage`.
+
+## Deploy on GitHub Pages
+1. Put `index.html` and `README.md` in the root of a repository.
+2. Settings → Pages → *Deploy from a branch* → `main` / `(root)` → Save.
+3. Open `https://<user>.github.io/<repo>/`.
+
+## Add a building type
+Everything is data in `CONFIG.buildings` (see the `CONFIG` section of `index.html`). Add one object:
+```js
+chapel: { role: 'landmark', label: 'Chapel', nouns: ['Chapel', 'Hall'], parts: [
+  { k: 'walls', w: 3, d: 4, courses: 7, base: 1,
+    doors: [{ side: 'front', x: 0, w: 1, h: 4 }],
+    windows: [{ side: 'left', x: 0, w: 0.7, y: 3, h: 2 }] },
+  { k: 'gable', on: 0, axis: 'z', ov: 0.3, step: 0.5 },
+  { k: 'flag', on: 1, n: 3 }
+] }
+```
+- `role`: `home`, `shop` or `landmark` (roles are weighted in `CONFIG.weights`).
+- Part kinds: `walls`, `ring`, `gable`, `cone`, `stack`, `awning`, `sign`, `flag`. `on` is the index of an earlier part to sit on. `at: [x, z]` offsets a part; `crenel`, `bands`, `base`, `stripes` are optional styling flags.
+- Shop types need a `sign` part to show the name board. Landmarks need `nouns` for the name generator.
+- Pedestal size, scaffold, scaffolding and garden spacing are derived automatically from the layout.
+
+## Add name word pools
+In `CONFIG.names`: `owners`, `surnames`, `streets`, `landmarkPrefix`, `towns`, and `shops` (each shop kind has its own `kind`, `short`, `adj`, `obj`, `brand` pools). Add words to any list, or add a new shop object. Names are seeded from the building, unique within the town, and at most 24 characters.
+
+## Known limitations
+- The adaptive quality controller can only see the display's frame interval. On a 60 Hz screen frames can't be shorter than ~16.7 ms, so "fast" means: under 12 ms, or at vsync with low CPU time. GPU time itself is not measurable in WebGL.
+- Re-merging buildings and gardens on a Low ↔ Medium switch can cause a short hitch in very large towns.
+- Merged buildings use bevelled bricks on Medium/High (about 44 triangles per brick); a very large town photographed in Town mode is heavy for old phones.
+- Windows are lit with flat warm glass (no real night lighting). Interiors are hollow.
+- Needs an internet connection to fetch three.js from the CDN (host a local copy and change the import URL to go offline).
+- Audio only starts after the first touch (browser autoplay rules). Silent-mode iPhones may mute Web Audio.
+
+## iOS vs Android (photos)
+- **iOS Safari 15+**: `navigator.share` with files opens the share sheet → *Save Image*. If Safari rejects the share (user-activation timing), a preview sheet appears: tap **Share / Save** or long-press the picture → *Add to Photos*. Plain downloads land in Files, not Photos.
+- **Android Chrome**: the share sheet works on recent versions; older ones fall back to a PNG download in Downloads/Gallery.
+- **Desktop**: Chrome/Edge on Windows may open the system share dialog; Firefox/desktop Safari download the PNG.
+- Photo resolution is up to 2× the screen buffer, capped at about 8 megapixels and the GPU's texture limit.
