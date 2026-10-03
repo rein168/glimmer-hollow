@@ -98,8 +98,9 @@ const CONFIG = {
   brick: { L: 1.0, H: 0.4, T: 0.34, rowH: 2 },   // rowH = wall courses merged into one brick row
   pickup: { baseRadius: 1.5, growRadius: 2.6, growTime: 5, moveBonus: 0.8, moveSpeedRef: 7,
             intervalStill: 0.34, intervalMoving: 0.09, driftMult: 2.3, driftSpeed: 1.6,
-            maxFlying: 14, flightTime: 0.8, arcHeight: 2.2, orbLerp: 12 },
-  loose: { max: 25, respawnPerSec: 3.2, burstOnNewSite: 14 },
+            maxFlying: 30, flightTime: 0.8, arcHeight: 2.2, orbLerp: 12 },
+  loose: { max: 28, respawnPerSec: 3.2, burstOnNewSite: 20 },
+  build: { targetSecs: 24 },   // hold-still build time target; moving is ~2-3x faster
   weights: { shop: 0.5, home: 0.35, landmark: 0.15 },
   perf: { slowMs: 22, slowSecs: 3, fastMs: 12, fastSecs: 10, vsyncMs: 18.5, cpuMsOk: 9, graceSecs: 3, cooldownSecs: 25 },
   lights: { hemi: 1.7, sun: 2.4, amb: 2.2 },
@@ -1124,7 +1125,7 @@ function updateBricks(dt, t) {
     orb.pickT -= dt;
     if (cand.length && need > 0) {
       cand.sort((a, c) => a[0] - c[0]);
-      const interval = lerp(C.intervalStill, C.intervalMoving, clamp(orb.speed / C.moveSpeedRef, 0, 1));
+      const nSlots = site.layout.slots.length, stillI = clamp(CONFIG.build.targetSecs * 0.8 / nSlots, 0.05, C.intervalStill), moveI = Math.max(0.035, stillI * 0.4), interval = lerp(stillI, moveI, clamp(orb.speed / C.moveSpeedRef, 0, 1));
       let n = 0;
       while (orb.pickT <= 0 && n < cand.length && flying < C.maxFlying && need > 0 && n < 3) { launchBrick(cand[n][1], site.assigned); n++; need--; orb.pickT += interval; }
       if (orb.pickT < -0.3) orb.pickT = 0;
@@ -1132,7 +1133,7 @@ function updateBricks(dt, t) {
   } else for (const b of loose) if (b.st === 'hot') b.st = 'idle';
   // respawn
   if (site && loose.length < 60) {
-    spawnAcc += dt * CONFIG.loose.respawnPerSec;
+    spawnAcc += dt * Math.max(CONFIG.loose.respawnPerSec, 2.5 / Math.max(0.05, CONFIG.build.targetSecs * 0.8 / site.layout.slots.length));
     while (spawnAcc >= 1) { spawnAcc -= 1; if (idleCount() < CONFIG.loose.max) spawnBrick(true); else { spawnAcc = Math.min(spawnAcc, 1); break; } }
   }
   // integrate + write instances
@@ -1679,7 +1680,7 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
   camFocusSite(0); cam.zoomT = cam.zoom = 1; updateShadowCasters(); updateCamera(0.016);
   refreshUI(); updateLabelText();
   last = performance.now(); raf = requestAnimationFrame(frame);
-  window.__gh = { S, site: () => site, THREE, tick: ms => tick(ms, performance.now()), cam, orb, loose };
+  window.__gh = { genLayout, CONFIG, S, site: () => site, THREE, tick: ms => tick(ms, performance.now()), cam, orb, loose };
 })();
 </script>
 </body>
